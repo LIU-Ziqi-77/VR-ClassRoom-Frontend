@@ -51,6 +51,18 @@ public class FallbackSpeechService : MonoBehaviour
         _speechRoutine = StartCoroutine(SpeechRoutine(text, duration));
     }
 
+    /// <summary>
+    /// Start speaking with audio + lip sync only — no PlaySpeakingMotion call.
+    /// Use when the caller already handles its own procedural body animation
+    /// (e.g. TalkToClassmate, AskQuestion) so the motion override won't clobber it.
+    /// </summary>
+    public void SpeakWithoutMotion(string text, float duration = 0)
+    {
+        if (isSpeaking) return;
+        if (duration <= 0) duration = Mathf.Max(1.5f, text.Length * 0.08f);
+        _speechRoutine = StartCoroutine(SpeechRoutineAudioOnly(text, duration));
+    }
+
     public void StopSpeaking()
     {
         if (_speechRoutine != null)
@@ -77,6 +89,31 @@ public class FallbackSpeechService : MonoBehaviour
 
         if (proceduralAnimator != null)
             proceduralAnimator.PlaySpeakingMotion(duration);
+
+        float elapsed = 0;
+        while (elapsed < duration)
+        {
+            DriveLipSync(elapsed);
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        ResetMouth();
+        isSpeaking = false;
+        _speechRoutine = null;
+    }
+
+    IEnumerator SpeechRoutineAudioOnly(string text, float duration)
+    {
+        isSpeaking = true;
+        Debug.Log($"[FallbackSpeech] {gameObject.name}: \"{text}\" ({duration:F1}s) [audio+lip only]");
+
+        if (generateAudio)
+        {
+            AudioClip clip = GenerateProceduralSpeechClip(duration);
+            audioSource.clip = clip;
+            audioSource.Play();
+        }
 
         float elapsed = 0;
         while (elapsed < duration)

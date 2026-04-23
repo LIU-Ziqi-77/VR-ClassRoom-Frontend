@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.XR;
+using Unity.XR.CoreUtils;
 using System.Collections.Generic;
 using VRM;
 
@@ -6,18 +8,14 @@ using VRM;
 /// One-click scene setup for the behavior demo.
 /// Add to an empty GameObject in "University Classroom.unity", then hit Play.
 ///
-/// Flow:
-///   1. Finds all VRM avatars by VRMBlendShapeProxy component
-///   2. Finds the correct Humanoid Animator on each (isHuman=true)
-///   3. Adds ProceduralBehaviorAnimator + FallbackSpeechService + AudioSource
-///   4. Creates BehaviorDemoController for keyboard/GUI input
-///   5. Disables old conflicting test controllers
-///   6. Scans for and reports Missing Script components on avatar GameObjects
-///
-/// Each VRM avatar root has TWO Animators:
-///   • Prefab Animator  — has Humanoid Avatar (isHuman=true), no Controller
-///   • Scene Animator   — has Avatar-Controller (Sit anim), no Humanoid Avatar
-/// We use the Humanoid one for GetBoneTransform() in procedural animation.
+/// Setup flow:
+///   0. Replace flower-head avatars with clones of good-looking avatars
+///   1. Find all VRM avatars via VRMBlendShapeProxy
+///   2. Add ProceduralBehaviorAnimator + FallbackSpeechService + StudentBehaviorVisuals to each
+///   3. Create BehaviorDemoController for keyboard/GUI input
+///   4. Disable old conflicting scripts
+///   5a. Desktop mode: add DemoCameraController to Camera.main (right-mouse-drag + WASD)
+///   5b. VR mode: add XRClassroomLocomotion to XR Origin (joystick locomotion + snap turn)
 /// </summary>
 public class BehaviorDemoSetup : MonoBehaviour
 {
@@ -27,10 +25,12 @@ public class BehaviorDemoSetup : MonoBehaviour
     public bool randomizePitch = true;
 
     [Header("Avatar Appearance")]
-    [Tooltip("Hide the head_Transparent mesh on specific avatars to remove flower/accessory visuals")]
-    public bool hideFlowerAccessories = true;
-    [Tooltip("Avatar names that should have their transparent head mesh hidden (e.g. flower-head avatars)")]
-    public string[] avatarsToClean = { "avatar_man2", "avatar_woman2" };
+    [Tooltip("Replace flower-head avatars with clones of good-looking ones at runtime")]
+    public bool replaceFlowerAvatars = true;
+    [Tooltip("Names of avatars that have flower/non-human accessories")]
+    public string[] badAvatarNames = { "avatar_man2", "avatar_woman1" };
+    [Tooltip("Names of good-looking avatars to clone from (same order as above)")]
+    public string[] goodDonorNames = { "avatar_man1", "avatar_woman2" };
 
     void Start()
     {
@@ -41,16 +41,18 @@ public class BehaviorDemoSetup : MonoBehaviour
     [ContextMenu("Run Setup Now")]
     public void SetupScene()
     {
-        var students = new List<ProceduralBehaviorAnimator>();
+        // Step 0: Replace flower-head avatars
+        if (replaceFlowerAvatars)
+            ReplaceFlowerAvatars();
 
         // Step 1: Find VRM avatars
+        var students = new List<ProceduralBehaviorAnimator>();
         var proxies = FindObjectsOfType<VRMBlendShapeProxy>(includeInactive);
         Debug.Log($"[BehaviorDemoSetup] Step 1: Found {proxies.Length} VRMBlendShapeProxy in scene");
 
         if (proxies.Length == 0)
         {
-            Debug.LogError("[BehaviorDemoSetup] FATAL: No VRMBlendShapeProxy found! VRM avatars may not be in the scene, or VRM package failed to load.");
-            ScanForMissingScriptsGlobal();
+            Debug.LogError("[BehaviorDemoSetup] FATAL: No VRMBlendShapeProxy found!");
             return;
         }
 
@@ -62,64 +64,30 @@ public class BehaviorDemoSetup : MonoBehaviour
             GameObject go = proxy.gameObject;
             Debug.Log($"[BehaviorDemoSetup] ── Configuring [{idx}]: {go.name} ──");
 
-            ScanForMissingScripts(go);
-
-            // Find Humanoid Animator
-            Animator humanoidAnim = null;
-            var animators = go.GetComponents<Animator>();
-            Debug.Log($"[BehaviorDemoSetup]   Animators on root: {animators.Length}");
-            for (int a = 0; a < animators.Length; a++)
-            {
-                var anim = animators[a];
-                bool human = anim.isHuman;
-                bool hasCtrl = anim.runtimeAnimatorController != null;
-                string avatarName = anim.avatar != null ? anim.avatar.name : "null";
-                Debug.Log($"[BehaviorDemoSetup]   Animator[{a}]: isHuman={human} hasController={hasCtrl} avatar={avatarName}");
-                if (human && humanoidAnim == null)
-                    humanoidAnim = anim;
-            }
-
-            if (humanoidAnim == null && animators.Length > 0)
-            {
-                humanoidAnim = animators[0];
-                Debug.LogWarning($"[BehaviorDemoSetup]   No humanoid Animator found — falling back to Animator[0] (isHuman={humanoidAnim.isHuman})");
-            }
+            Animator humanoidAnim = FindHumanoidAnimator(go);
             if (humanoidAnim == null)
             {
-                Debug.LogError($"[BehaviorDemoSetup]   {go.name}: NO Animator at all. Skipping.");
+                Debug.LogError($"[BehaviorDemoSetup]   {go.name}: NO Animator. Skipping.");
                 continue;
             }
+            Debug.Log($"[BehaviorDemoSetup]   Animator isHuman={humanoidAnim.isHuman}");
 
-            // Add ProceduralBehaviorAnimator
             var pba = go.GetComponent<ProceduralBehaviorAnimator>();
             if (pba == null)
-            {
                 pba = go.AddComponent<ProceduralBehaviorAnimator>();
-                Debug.Log($"[BehaviorDemoSetup]   Added ProceduralBehaviorAnimator");
-            }
-            else
-            {
-                Debug.Log($"[BehaviorDemoSetup]   ProceduralBehaviorAnimator already present");
-            }
             pba.animator = humanoidAnim;
 
-            // Add AudioSource (before FallbackSpeechService, which needs it)
             var audio = go.GetComponent<AudioSource>();
             if (audio == null)
             {
                 audio = go.AddComponent<AudioSource>();
                 audio.playOnAwake = false;
                 audio.spatialBlend = 1f;
-                Debug.Log($"[BehaviorDemoSetup]   Added AudioSource");
             }
 
-            // Add FallbackSpeechService
             var fss = go.GetComponent<FallbackSpeechService>();
             if (fss == null)
-            {
                 fss = go.AddComponent<FallbackSpeechService>();
-                Debug.Log($"[BehaviorDemoSetup]   Added FallbackSpeechService");
-            }
             fss.blendShapeProxy = proxy;
             fss.proceduralAnimator = pba;
             fss.audioSource = audio;
@@ -127,25 +95,24 @@ public class BehaviorDemoSetup : MonoBehaviour
             if (randomizePitch)
                 fss.baseFrequency = Random.Range(140f, 260f);
 
+            // Visual overlay — overhead label + selection indicator
+            var visuals = go.GetComponent<StudentBehaviorVisuals>();
+            if (visuals == null)
+                visuals = go.AddComponent<StudentBehaviorVisuals>();
+            visuals.displayName = go.name;
+
             students.Add(pba);
-            Debug.Log($"[BehaviorDemoSetup]   ✓ {go.name} fully configured");
+            Debug.Log($"[BehaviorDemoSetup]   ✓ {go.name} ready");
         }
 
-        // Step 3: Create/find BehaviorDemoController
+        // Step 3: BehaviorDemoController
         var demo = FindObjectOfType<BehaviorDemoController>();
         if (demo == null)
-        {
             demo = gameObject.AddComponent<BehaviorDemoController>();
-            Debug.Log($"[BehaviorDemoSetup] Step 3: Created BehaviorDemoController on '{gameObject.name}'");
-        }
-        else
-        {
-            Debug.Log($"[BehaviorDemoSetup] Step 3: Found existing BehaviorDemoController on '{demo.gameObject.name}'");
-        }
         demo.students = students;
-        Debug.Log($"[BehaviorDemoSetup] Assigned {students.Count} students to BehaviorDemoController");
+        Debug.Log($"[BehaviorDemoSetup] Step 3: {students.Count} students assigned to controller");
 
-        // Step 4: Disable old test controllers
+        // Step 4: Disable old controllers
         if (disableOldTestControllers)
         {
             DisableIfExists<EditorTestController>();
@@ -154,54 +121,72 @@ public class BehaviorDemoSetup : MonoBehaviour
             DisableIfExists<StudentTestController>();
         }
 
-        // Step 5: Clean up avatar appearance (hide flower/accessory meshes)
-        if (hideFlowerAccessories)
-        {
-            foreach (var pba in students)
-                CleanAvatarAppearance(pba.gameObject);
-        }
-
-        // Step 6: Unlock cursor for demo usability
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-        Debug.Log("[BehaviorDemoSetup] Step 5: Cursor unlocked and visible");
-
-        // Disable FreeWalkCamera / FreeFlyCamera to prevent re-locking
-        DisableCursorLockers();
+        // Step 5: Camera setup — replace walk/fly cameras with demo camera
+        SetupDemoCamera();
 
         Debug.Log($"[BehaviorDemoSetup] ====== SETUP COMPLETE: {students.Count} student(s) ready ======");
     }
 
-    void CleanAvatarAppearance(GameObject avatarGO)
-    {
-        string name = avatarGO.name.ToLower();
-        bool shouldClean = false;
-        foreach (var pattern in avatarsToClean)
-        {
-            if (name.Contains(pattern.ToLower()))
-            {
-                shouldClean = true;
-                break;
-            }
-        }
-        if (!shouldClean) return;
+    // ─── Avatar Replacement ──────────────────────────────────
 
-        // The "flower" or unusual accessory visuals are typically baked into
-        // head_Transparent_Material_Meshes_Mesh.  Disabling this renderer
-        // removes the transparent accessory while preserving the opaque face/head.
-        var renderers = avatarGO.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-        foreach (var r in renderers)
+    void ReplaceFlowerAvatars()
+    {
+        Debug.Log("[BehaviorDemoSetup] Step 0: Replacing flower-head avatars...");
+
+        if (badAvatarNames.Length != goodDonorNames.Length)
         {
-            if (r.gameObject.name.Contains("head_Transparent"))
+            Debug.LogError("[BehaviorDemoSetup] badAvatarNames and goodDonorNames must have the same length!");
+            return;
+        }
+
+        // Build lookup of all current VRM avatars by name
+        var allProxies = FindObjectsOfType<VRMBlendShapeProxy>(includeInactive);
+        var byName = new Dictionary<string, GameObject>();
+        foreach (var p in allProxies)
+        {
+            string key = p.gameObject.name.ToLower();
+            byName[key] = p.gameObject;
+        }
+
+        for (int i = 0; i < badAvatarNames.Length; i++)
+        {
+            string badKey = badAvatarNames[i].ToLower();
+            string goodKey = goodDonorNames[i].ToLower();
+
+            if (!byName.TryGetValue(badKey, out GameObject badGO))
             {
-                r.enabled = false;
-                Debug.Log($"[BehaviorDemoSetup] Hidden '{r.gameObject.name}' on {avatarGO.name} (flower/accessory cleanup)");
+                Debug.LogWarning($"[BehaviorDemoSetup]   Bad avatar '{badAvatarNames[i]}' not found in scene. Skipping.");
+                continue;
             }
+            if (!byName.TryGetValue(goodKey, out GameObject goodGO))
+            {
+                Debug.LogWarning($"[BehaviorDemoSetup]   Donor avatar '{goodDonorNames[i]}' not found in scene. Skipping.");
+                continue;
+            }
+
+            // Clone the good avatar
+            Vector3 pos = badGO.transform.position;
+            Quaternion rot = badGO.transform.rotation;
+            Vector3 scale = badGO.transform.localScale;
+            Transform parent = badGO.transform.parent;
+
+            GameObject clone = Instantiate(goodGO, pos, rot, parent);
+            clone.transform.localScale = scale;
+            clone.name = badAvatarNames[i]; // keep the original name for consistency
+
+            // Deactivate the flower-head original
+            badGO.SetActive(false);
+            badGO.name = badGO.name + "_disabled";
+
+            Debug.Log($"[BehaviorDemoSetup]   Replaced '{badAvatarNames[i]}' with clone of '{goodDonorNames[i]}' at ({pos.x:F2}, {pos.y:F2}, {pos.z:F2})");
         }
     }
 
-    void DisableCursorLockers()
+    // ─── Camera / Locomotion ─────────────────────────────────
+
+    void SetupDemoCamera()
     {
+        // Always disable the old walk/fly cameras that lock the cursor
         foreach (var cam in FindObjectsOfType<FreeWalkCamera>())
         {
             cam.lockCursor = false;
@@ -214,50 +199,138 @@ public class BehaviorDemoSetup : MonoBehaviour
             cam.enabled = false;
             Debug.Log($"[BehaviorDemoSetup] Disabled FreeFlyCamera on '{cam.gameObject.name}'");
         }
+
+#pragma warning disable CS0618
+        bool xrActive = XRSettings.isDeviceActive || XRSettings.enabled;
+#pragma warning restore CS0618
+
+        if (xrActive)
+        {
+            SetupXRLocomotion();
+        }
+        else
+        {
+            SetupDesktopCamera();
+        }
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        Debug.Log("[BehaviorDemoSetup] Cursor unlocked and visible");
     }
 
-    void ScanForMissingScripts(GameObject go)
+    /// Desktop demo camera: right-click to look + WASD to move.
+    void SetupDesktopCamera()
     {
-        var components = go.GetComponents<Component>();
-        int missing = 0;
-        for (int i = 0; i < components.Length; i++)
+        var mainCam = Camera.main;
+        if (mainCam == null)
         {
-            if (components[i] == null)
-            {
-                missing++;
-            }
+            Debug.LogWarning("[BehaviorDemoSetup] No Camera.main found for desktop camera setup.");
+            return;
         }
-        if (missing > 0)
-            Debug.LogWarning($"[BehaviorDemoSetup]   ⚠ {go.name} has {missing} Missing Script component(s). These are harmless orphan references but may produce console warnings.");
 
-        // Also scan immediate children (VRM avatars have child objects with springs etc.)
-        for (int c = 0; c < go.transform.childCount; c++)
+        // When no XR device is active, the camera may still be inside an XR Origin
+        // hierarchy (XR Origin → Camera Offset → Main Camera). Detach it so
+        // DemoCameraController has uncontested world-space control.
+        if (IsInsideXROrigin(mainCam.transform))
         {
-            var child = go.transform.GetChild(c);
-            var childComps = child.GetComponents<Component>();
-            int childMissing = 0;
-            for (int i = 0; i < childComps.Length; i++)
+            Vector3 worldPos = mainCam.transform.position;
+            Quaternion worldRot = mainCam.transform.rotation;
+            mainCam.transform.SetParent(null);
+            mainCam.transform.SetPositionAndRotation(worldPos, worldRot);
+            Debug.Log("[BehaviorDemoSetup] Detached Main Camera from XR Origin for desktop mode.");
+
+            // Disable any XR tracking components that might fight the camera controller
+            foreach (var comp in mainCam.GetComponents<MonoBehaviour>())
             {
-                if (childComps[i] == null) childMissing++;
+                string typeName = comp.GetType().Name;
+                if (typeName.Contains("TrackedPoseDriver") || typeName.Contains("XRController"))
+                {
+                    comp.enabled = false;
+                    Debug.Log($"[BehaviorDemoSetup] Disabled {typeName} on camera for desktop mode.");
+                }
             }
-            if (childMissing > 0)
-                Debug.LogWarning($"[BehaviorDemoSetup]   ⚠ {go.name}/{child.name} has {childMissing} Missing Script(s)");
+
+            var xrOriginGO = FindXROrigin();
+            if (xrOriginGO != null)
+            {
+                xrOriginGO.SetActive(false);
+                Debug.Log("[BehaviorDemoSetup] Disabled XR Origin hierarchy (not needed in desktop mode).");
+            }
         }
+
+        var existing = mainCam.GetComponent<DemoCameraController>();
+        if (existing == null)
+        {
+            mainCam.gameObject.AddComponent<DemoCameraController>();
+            Debug.Log($"[BehaviorDemoSetup] Added DemoCameraController to '{mainCam.gameObject.name}'");
+        }
+
+        // Remove any leftover CharacterController from old walk cameras
+        var cc = mainCam.GetComponent<CharacterController>();
+        if (cc != null)
+        {
+            Destroy(cc);
+            Debug.Log("[BehaviorDemoSetup] Removed leftover CharacterController from camera");
+        }
+
+        Debug.Log("[BehaviorDemoSetup] Desktop camera ready. Right-click + WASD to move.");
     }
 
-    void ScanForMissingScriptsGlobal()
+    /// VR mode: add XRClassroomLocomotion to the XR Origin.
+    void SetupXRLocomotion()
     {
-        Debug.Log("[BehaviorDemoSetup] Scanning all root GameObjects for missing scripts...");
-        var roots = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
-        foreach (var root in roots)
+        // Try to find the XR Origin by its common component type
+        GameObject xrOrigin = FindXROrigin();
+        if (xrOrigin == null)
         {
-            var comps = root.GetComponents<Component>();
-            int missing = 0;
-            for (int i = 0; i < comps.Length; i++)
-                if (comps[i] == null) missing++;
-            if (missing > 0)
-                Debug.LogWarning($"[BehaviorDemoSetup] Root GO '{root.name}' has {missing} Missing Script(s)");
+            Debug.LogWarning("[BehaviorDemoSetup] XR device active but no XR Origin found in scene. " +
+                             "VR locomotion could not be configured automatically.");
+            return;
         }
+
+        var locomotion = xrOrigin.GetComponent<XRClassroomLocomotion>();
+        if (locomotion == null)
+            locomotion = xrOrigin.AddComponent<XRClassroomLocomotion>();
+
+        Debug.Log($"[BehaviorDemoSetup] VR mode: XRClassroomLocomotion added to '{xrOrigin.name}'. " +
+                  "Ensure Input Action References are assigned in Inspector.");
+    }
+
+    // ─── XR Helpers ──────────────────────────────────────────
+
+    /// Returns true if the given transform is anywhere inside an XR Origin hierarchy.
+    static bool IsInsideXROrigin(Transform t)
+    {
+        var xrOriginGO = FindXROrigin();
+        if (xrOriginGO == null) return false;
+        Transform check = t;
+        while (check != null)
+        {
+            if (check.gameObject == xrOriginGO) return true;
+            check = check.parent;
+        }
+        return false;
+    }
+
+    /// Finds the XR Origin GameObject using known component names (XRIT 3.x).
+    static GameObject FindXROrigin()
+    {
+        var xrOriginComp = FindObjectOfType<XROrigin>();
+        if (xrOriginComp != null) return xrOriginComp.gameObject;
+
+        // Fallback: search by common GameObject name
+        var go = GameObject.Find("XR Origin (VR)") ?? GameObject.Find("XR Origin") ?? GameObject.Find("XROrigin");
+        return go;
+    }
+
+    // ─── Utilities ───────────────────────────────────────────
+
+    static Animator FindHumanoidAnimator(GameObject go)
+    {
+        var animators = go.GetComponents<Animator>();
+        foreach (var a in animators)
+            if (a.isHuman) return a;
+        return animators.Length > 0 ? animators[0] : null;
     }
 
     void DisableIfExists<T>() where T : MonoBehaviour

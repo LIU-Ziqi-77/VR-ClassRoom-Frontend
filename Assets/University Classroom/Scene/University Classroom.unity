@@ -4635,6 +4635,13 @@ MonoBehaviour:
   includeInactive: 0
   disableOldTestControllers: 1
   randomizePitch: 1
+  replaceFlowerAvatars: 1
+  badAvatarNames:
+  - avatar_man2
+  - avatar_woman1
+  goodDonorNames:
+  - avatar_man1
+  - avatar_woman2
 --- !u!4 &724864426
 Transform:
   m_ObjectHideFlags: 0
@@ -11264,6 +11271,7 @@ MonoBehaviour:
   boostMultiplier: 2
   gravity: 20
   jumpHeight: 1
+  lockCursor: 1
 --- !u!1001 &1682154306
 PrefabInstance:
   m_ObjectHideFlags: 0

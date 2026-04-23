@@ -21,6 +21,13 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     private Coroutine _activeBehavior;
     private bool _behaviorActive;
 
+    /// <summary>Human-readable name of the currently running behavior ("" when idle).</summary>
+    public string CurrentBehaviorName { get; private set; } = "";
+
+    /// <summary>Seat / home position captured on first LeaveSeat call; used by ReturnToSeat.</summary>
+    [HideInInspector] public Vector3 seatPosition;
+    [HideInInspector] public bool seatPositionCaptured;
+
     private Dictionary<HumanBodyBones, Quaternion> _restPose = new Dictionary<HumanBodyBones, Quaternion>();
     private Dictionary<HumanBodyBones, Quaternion> _overrides = new Dictionary<HumanBodyBones, Quaternion>();
     private Dictionary<HumanBodyBones, float> _overrideWeights = new Dictionary<HumanBodyBones, float>();
@@ -137,6 +144,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             _activeBehavior = null;
         }
         _behaviorActive = false;
+        CurrentBehaviorName = "";
         StartCoroutine(FadeOutOverrides(0.4f));
     }
 
@@ -182,9 +190,60 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         StartBehavior(ReactionRoutine(reactionType, duration));
     }
 
+    /// <summary>Ask question: raise hand with a forward lean and eager nodding.</summary>
+    public void PlayAskQuestion(float duration = 0f)
+    {
+        StartBehavior(AskQuestionRoutine(duration));
+    }
+
+    /// <summary>Distracted: slouch, look away, idle fidgeting.</summary>
+    public void PlayDistracted(float duration = 0f)
+    {
+        StartBehavior(DistractedRoutine(duration));
+    }
+
+    /// <summary>Talk to nearby classmate: turn toward neighbor with speaking motion.</summary>
+    public void PlayTalkToClassmate(Transform neighbor, float duration = 0f)
+    {
+        StartBehavior(TalkToClassmateRoutine(neighbor, duration));
+    }
+
+    /// <summary>
+    /// Leave seat: approximate stand-up pose and translate toward targetWorldPos.
+    /// Captures seatPosition on first call so ReturnToSeat can undo it.
+    /// </summary>
+    public void PlayLeaveSeat(Vector3 targetWorldPos, float moveDuration = 2.5f)
+    {
+        if (!seatPositionCaptured)
+        {
+            seatPosition = transform.position;
+            seatPositionCaptured = true;
+        }
+        StartBehavior(LeaveSeatRoutine(targetWorldPos, moveDuration));
+    }
+
+    /// <summary>Return to the captured seat position.</summary>
+    public void PlayReturnToSeat(float moveDuration = 2f)
+    {
+        if (!seatPositionCaptured) return;
+        StartBehavior(ReturnToSeatRoutine(moveDuration));
+    }
+
+    /// <summary>Pushed reaction with directional displacement and stumble.</summary>
+    public void PlayPushedReaction(Vector3 pushDirection, float duration = 1.5f)
+    {
+        StartBehavior(PushedReactionRoutine(pushDirection, duration));
+    }
+
+    /// <summary>Listen to a nearby classmate — face them with attentive nodding.</summary>
+    public void PlayListenToClassmate(Transform speaker, float duration = 0f)
+    {
+        StartBehavior(ListenToClassmateRoutine(speaker, duration));
+    }
+
     // ─── Internal ────────────────────────────────────────────
 
-    void StartBehavior(IEnumerator routine)
+    void StartBehavior(IEnumerator routine, string behaviorName = "")
     {
         if (animator == null || !animator.isHuman)
         {
@@ -204,6 +263,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         yield return StartCoroutine(inner);
         _behaviorActive = false;
         _activeBehavior = null;
+        CurrentBehaviorName = "";
         yield return StartCoroutine(FadeOutOverrides(0.3f));
     }
 
@@ -245,7 +305,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             SetOverride(kv.Key, kv.Value, 1f);
     }
 
-    // ─── World-Space Aiming Utility ─────────────────────────
+    // ─── World-Space Aiming Utilities ────────────────────────
 
     /// <summary>
     /// Computes the localRotation that redirects a bone so it points toward
@@ -265,73 +325,306 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         return Quaternion.Inverse(parentWorld) * newWorldRot;
     }
 
+    /// <summary>
+    /// Predictive AimBone: computes the local rotation for a child bone (e.g. forearm)
+    /// assuming its parent bone (e.g. upper arm) WILL be at <paramref name="parentLocalTarget"/>
+    /// rather than its current rotation. This avoids the two-phase compute-then-wait pattern
+    /// that caused visual snapping.
+    /// </summary>
+    Quaternion AimBoneWithPredictedParent(HumanBodyBones bone, HumanBodyBones childBone,
+        Vector3 worldTargetDir, Quaternion parentLocalTarget)
+    {
+        Transform boneT  = animator.GetBoneTransform(bone);
+        Transform childT = animator.GetBoneTransform(childBone);
+        Transform parentT = boneT != null ? boneT.parent : null;
+        if (boneT == null || childT == null || parentT == null) return Rest(bone);
+
+        Quaternion grandparentWorld = parentT.parent != null ? parentT.parent.rotation : Quaternion.identity;
+        Quaternion parentFutureWorld = grandparentWorld * parentLocalTarget;
+        Quaternion parentDelta = parentFutureWorld * Quaternion.Inverse(parentT.rotation);
+
+        Vector3 pivot = parentT.position;
+        Vector3 boneFuturePos  = pivot + parentDelta * (boneT.position  - pivot);
+        Vector3 childFuturePos = pivot + parentDelta * (childT.position - pivot);
+        Quaternion boneFutureRot = parentDelta * boneT.rotation;
+
+        Vector3 currentDir = (childFuturePos - boneFuturePos).normalized;
+        if (currentDir.sqrMagnitude < 0.001f) return Rest(bone);
+
+        Quaternion worldDelta2 = Quaternion.FromToRotation(currentDir, worldTargetDir.normalized);
+        Quaternion newWorldRot = worldDelta2 * boneFutureRot;
+        return Quaternion.Inverse(parentFutureWorld) * newWorldRot;
+    }
+
+    // ─── Palm Correction Utility ─────────────────────────────
+
+    /// <summary>
+    /// Computes a hand local rotation that twists the wrist so the palm faces
+    /// <paramref name="desiredPalmDirWorld"/> after the arm is raised.
+    /// Uses runtime bone vectors for the twist axis (rig-agnostic) and the
+    /// predicted forearm world rotation to convert the desired direction into
+    /// the correct coordinate frame.
+    /// </summary>
+    Quaternion ComputePalmCorrectedHand(HumanBodyBones handBone,
+        Vector3 desiredPalmDirWorld, Quaternion forearmFutureWorld)
+    {
+        Transform hand = animator.GetBoneTransform(handBone);
+        if (hand == null || hand.parent == null || hand.localPosition.sqrMagnitude < 0.0001f)
+            return Rest(handBone);
+
+        // Twist axis = forearm bone direction in forearm's local space (constant)
+        Vector3 twistAxisLocal = hand.localPosition.normalized;
+
+        // Palm-facing direction in forearm local space from the rest hand rotation.
+        // hand.up reads the Animator's bone orientation (rig-agnostic palm normal).
+        Vector3 palmBackInForearmLocal = Quaternion.Inverse(hand.parent.rotation) * hand.up;
+        Vector3 palmFacingLocal = -palmBackInForearmLocal;
+        palmFacingLocal = Vector3.ProjectOnPlane(palmFacingLocal, twistAxisLocal).normalized;
+
+        // Desired palm direction in the forearm's FUTURE local space
+        Vector3 desiredLocal = Quaternion.Inverse(forearmFutureWorld) * desiredPalmDirWorld;
+        desiredLocal = Vector3.ProjectOnPlane(desiredLocal, twistAxisLocal).normalized;
+
+        if (palmFacingLocal.sqrMagnitude < 0.001f || desiredLocal.sqrMagnitude < 0.001f)
+            return Rest(handBone);
+
+        float angle = Vector3.SignedAngle(palmFacingLocal, desiredLocal, twistAxisLocal);
+        return Quaternion.AngleAxis(angle, twistAxisLocal) * Rest(handBone);
+    }
+
+    /// Helper: predicts the forearm's world rotation after arm overrides are applied.
+    Quaternion PredictForearmWorld(Quaternion upperArmLocalTarget, Quaternion lowerArmLocalTarget)
+    {
+        Transform ua = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+        if (ua == null) return Quaternion.identity;
+        Quaternion shoulderWorld = ua.parent != null ? ua.parent.rotation : Quaternion.identity;
+        return shoulderWorld * upperArmLocalTarget * lowerArmLocalTarget;
+    }
+
+    // ─── Face Targeting Utility ──────────────────────────────
+
+    /// <summary>
+    /// Computes yaw and pitch angles from this avatar's head to a target's head.
+    /// Uses actual head bone positions for face-to-face accuracy rather than
+    /// root transform positions which sit at floor/seat level.
+    /// </summary>
+    void ComputeFaceTargetAngles(Transform target, out float yaw, out float pitch)
+    {
+        yaw = 0f;
+        pitch = 0f;
+        if (target == null) return;
+
+        Vector3 myHeadPos = transform.position + Vector3.up * 1.5f;
+        Transform myHead = animator.GetBoneTransform(HumanBodyBones.Head);
+        if (myHead != null) myHeadPos = myHead.position;
+
+        Vector3 targetHeadPos = target.position + Vector3.up * 1.5f;
+        Animator targetAnim = target.GetComponent<Animator>();
+        if (targetAnim == null) targetAnim = target.GetComponentInChildren<Animator>();
+        if (targetAnim != null && targetAnim.isHuman)
+        {
+            Transform targetHead = targetAnim.GetBoneTransform(HumanBodyBones.Head);
+            if (targetHead != null) targetHeadPos = targetHead.position;
+        }
+
+        Vector3 toTarget = targetHeadPos - myHeadPos;
+        Vector3 flatDir = toTarget;
+        flatDir.y = 0;
+
+        if (flatDir.sqrMagnitude > 0.001f)
+            yaw = Vector3.SignedAngle(transform.forward, flatDir.normalized, Vector3.up);
+
+        if (toTarget.sqrMagnitude > 0.001f && flatDir.magnitude > 0.01f)
+            pitch = -Mathf.Atan2(toTarget.y, flatDir.magnitude) * Mathf.Rad2Deg;
+    }
+
+    // ─── Standing Pose Utilities ─────────────────────────────
+
+    /// <summary>
+    /// Computes local rotations for all four leg bones that produce straight
+    /// standing legs. Uses AimBone to dynamically correct from whatever the
+    /// Animator's current pose is (e.g. seated) — not reliant on rest pose
+    /// which may have been captured from a sitting animation.
+    /// Call after at least one frame with no overrides so bone positions are fresh.
+    /// </summary>
+    void ComputeStandingLegPose(
+        out Quaternion leftUpper, out Quaternion rightUpper,
+        out Quaternion leftLower, out Quaternion rightLower)
+    {
+        leftUpper  = AimBone(HumanBodyBones.LeftUpperLeg,  HumanBodyBones.LeftLowerLeg,  Vector3.down);
+        rightUpper = AimBone(HumanBodyBones.RightUpperLeg, HumanBodyBones.RightLowerLeg, Vector3.down);
+        leftLower  = AimBoneWithPredictedParent(
+            HumanBodyBones.LeftLowerLeg, HumanBodyBones.LeftFoot,
+            Vector3.down, leftUpper);
+        rightLower = AimBoneWithPredictedParent(
+            HumanBodyBones.RightLowerLeg, HumanBodyBones.RightFoot,
+            Vector3.down, rightUpper);
+    }
+
+    /// <summary>
+    /// Computes local rotations that make both arms hang naturally at the sides,
+    /// plus the bone-local swing axis for forward/backward arm swing during walking.
+    /// Upper arms aimed straight down; forearms aimed slightly forward from
+    /// vertical to give a relaxed elbow bend (~7°).
+    /// </summary>
+    void ComputeHangingArmPose(
+        out Quaternion leftUpper, out Quaternion rightUpper,
+        out Quaternion leftLower, out Quaternion rightLower,
+        out Vector3 swingAxisL, out Vector3 swingAxisR)
+    {
+        leftUpper  = AimBone(HumanBodyBones.LeftUpperArm,  HumanBodyBones.LeftLowerArm,  Vector3.down);
+        rightUpper = AimBone(HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, Vector3.down);
+
+        Transform lBone = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+        Transform rBone = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+        Quaternion lPW = (lBone != null && lBone.parent != null) ? lBone.parent.rotation : Quaternion.identity;
+        Quaternion rPW = (rBone != null && rBone.parent != null) ? rBone.parent.rotation : Quaternion.identity;
+        swingAxisL = (Quaternion.Inverse(lPW * leftUpper)  * transform.right).normalized;
+        swingAxisR = (Quaternion.Inverse(rPW * rightUpper) * transform.right).normalized;
+
+        Vector3 forearmDir = (Vector3.down * 8f + transform.forward * 1f).normalized;
+        leftLower  = AimBoneWithPredictedParent(
+            HumanBodyBones.LeftLowerArm,  HumanBodyBones.LeftHand,
+            forearmDir, leftUpper);
+        rightLower = AimBoneWithPredictedParent(
+            HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand,
+            forearmDir, rightUpper);
+    }
+
     // ─── Behavior Implementations ────────────────────────────
 
-    /// RAISE HAND — rig-agnostic version using world-space bone aiming.
-    /// The upper arm is aimed upward (+Y) with a slight rightward lean so
-    /// the silhouette reads clearly as "classroom hand-raise."
+    // ─── Behavior Name Tags (set at start of each routine) ───
+
+    /// RAISE HAND — predictive AimBone for arm + rig-agnostic palm correction.
     IEnumerator RaiseHandRoutine(float duration)
     {
+        CurrentBehaviorName = "举手";
         while (!_restPoseCaptured) yield return null;
 
-        Vector3 up = Vector3.up;
+        Vector3 up    = Vector3.up;
         Vector3 right = transform.right;
-        Vector3 fwd = transform.forward;
+        Vector3 fwd   = transform.forward;
 
-        // Upper arm: mostly up, slightly to the avatar's right + a hint forward
         Vector3 upperArmDir = (up * 4f + right * 0.6f + fwd * 0.4f).normalized;
         Quaternion upperArmTarget = AimBone(
             HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, upperArmDir);
 
-        // Lower arm (forearm): continue upward, slightly back (natural elbow bend)
-        Vector3 forearmDir = (up * 3f - fwd * 0.8f + right * 0.2f).normalized;
-        Quaternion lowerArmTarget = AimBone(
-            HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand, forearmDir);
+        Vector3 forearmDir = (up * 3f + fwd * 0.3f + right * 0.2f).normalized;
+        Quaternion lowerArmTarget = AimBoneWithPredictedParent(
+            HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand,
+            forearmDir, upperArmTarget);
 
-        // Head: slight upward tilt (looking at own hand)
+        // Palm correction: orient palm forward/inward using predicted forearm rotation
+        Quaternion forearmFutureWorld = PredictForearmWorld(upperArmTarget, lowerArmTarget);
+        Vector3 palmDesired = (fwd + Vector3.down * 0.2f).normalized;
+        Quaternion handTarget = ComputePalmCorrectedHand(
+            HumanBodyBones.RightHand, palmDesired, forearmFutureWorld);
+
         Quaternion headTarget = Rest(HumanBodyBones.Head) * Quaternion.Euler(-5f, 3f, 0);
 
-        var pose = new Dictionary<HumanBodyBones, Quaternion> {
+        var targets = new Dictionary<HumanBodyBones, Quaternion>
+        {
             [HumanBodyBones.RightUpperArm] = upperArmTarget,
             [HumanBodyBones.RightLowerArm] = lowerArmTarget,
-            [HumanBodyBones.Head] = headTarget,
+            [HumanBodyBones.RightHand]     = handTarget,
+            [HumanBodyBones.Head]          = headTarget,
         };
+        yield return StartCoroutine(TransitionTo(targets, 0.6f));
 
-        yield return StartCoroutine(TransitionTo(pose, 0.5f));
-
-        // Gentle hand sway while holding
-        float t = 0;
+        // Hold with gentle hand sway (applied on top of palm-corrected base)
+        float st = 0;
         float endTime = duration > 0 ? duration : 999f;
-        while (t < endTime && _behaviorActive)
+        while (st < endTime && _behaviorActive)
         {
-            float sway = Mathf.Sin(t * 1.8f) * 2f;
+            float sway = Mathf.Sin(st * 1.8f) * 2f;
             SetOverride(HumanBodyBones.RightHand,
-                Rest(HumanBodyBones.RightHand) * Quaternion.Euler(sway, 0, sway * 0.5f));
-            t += Time.deltaTime;
+                handTarget * Quaternion.Euler(sway, 0, sway * 0.5f));
+            st += Time.deltaTime;
             yield return null;
         }
     }
 
-    /// TAKE NOTES: head tilt down, writing motion with right hand
+    /// TAKE NOTES: arm positioned on desk surface, subtle writing motion, periodic glances.
     IEnumerator TakeNotesRoutine(float duration)
     {
-        var pose = new Dictionary<HumanBodyBones, Quaternion> {
-            [HumanBodyBones.Head] = Rest(HumanBodyBones.Head) * Quaternion.Euler(25f, 0, 0),
-            [HumanBodyBones.Neck] = Rest(HumanBodyBones.Neck) * Quaternion.Euler(10f, 0, 0),
-            [HumanBodyBones.RightUpperArm] = Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(40f, 0, -30f),
-            [HumanBodyBones.RightLowerArm] = Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, -60f, 0),
-        };
+        CurrentBehaviorName = "记笔记";
+        while (!_restPoseCaptured) yield return null;
 
-        yield return StartCoroutine(TransitionTo(pose, 0.5f));
+        Quaternion headDown = Rest(HumanBodyBones.Head) * Quaternion.Euler(22f, 0, 0);
+        Quaternion neckDown = Rest(HumanBodyBones.Neck) * Quaternion.Euler(10f, 0, 0);
+        Quaternion headUp   = Rest(HumanBodyBones.Head) * Quaternion.Euler(-5f, 0, 0);
+        Quaternion neckUp   = Rest(HumanBodyBones.Neck) * Quaternion.Euler(-3f, 0, 0);
+
+        // Arm positioned to rest on desk: elbow close to body, forearm horizontal
+        Quaternion upperArmBase = Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(55f, 10f, -12f);
+        Quaternion lowerArmBase = Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, -80f, 0);
+
+        var writingPose = new Dictionary<HumanBodyBones, Quaternion> {
+            [HumanBodyBones.Head]          = headDown,
+            [HumanBodyBones.Neck]          = neckDown,
+            [HumanBodyBones.Spine]         = Rest(HumanBodyBones.Spine) * Quaternion.Euler(8f, 0, 0),
+            [HumanBodyBones.RightUpperArm] = upperArmBase,
+            [HumanBodyBones.RightLowerArm] = lowerArmBase,
+        };
+        if (_restPose.ContainsKey(HumanBodyBones.Chest))
+            writingPose[HumanBodyBones.Chest] = Rest(HumanBodyBones.Chest) * Quaternion.Euler(4f, 0, 0);
+
+        yield return StartCoroutine(TransitionTo(writingPose, 0.5f));
 
         float t = 0;
         float endTime = duration > 0 ? duration : 999f;
+        float glanceTimer = Random.Range(3f, 5f);
+        float glanceElapsed = 0f;
+        bool  glancing = false;
+        const float glanceTrans = 0.35f;
+        const float glanceHold  = 0.6f;
+
         while (t < endTime && _behaviorActive)
         {
-            float writeX = Mathf.Sin(t * 6f) * 8f;
-            float writeY = Mathf.Sin(t * 6f) * 4f;
+            // Subtle writing motion — small wrist wobble + tiny forearm sway
+            float writeX = Mathf.Sin(t * 4.5f) * 2.5f + Mathf.Sin(t * 7f) * 1f;
+            float writeY = Mathf.Sin(t * 3.0f) * 1.5f;
             SetOverride(HumanBodyBones.RightHand,
                 Rest(HumanBodyBones.RightHand) * Quaternion.Euler(writeX, writeY, 0));
+
+            float armOsc = Mathf.Sin(t * 4.2f) * 1.2f;
+            SetOverride(HumanBodyBones.RightLowerArm,
+                lowerArmBase * Quaternion.Euler(0, armOsc, armOsc * 0.3f));
+
+            // Periodic head-up glance at teacher
+            glanceTimer -= Time.deltaTime;
+            if (!glancing && glanceTimer <= 0f)
+            {
+                glancing = true;
+                glanceElapsed = 0f;
+            }
+
+            if (glancing)
+            {
+                glanceElapsed += Time.deltaTime;
+                float totalGlance = glanceTrans + glanceHold + glanceTrans;
+                float lookUp;
+                if (glanceElapsed < glanceTrans)
+                    lookUp = Mathf.SmoothStep(0, 1, glanceElapsed / glanceTrans);
+                else if (glanceElapsed < glanceTrans + glanceHold)
+                    lookUp = 1f;
+                else if (glanceElapsed < totalGlance)
+                    lookUp = 1f - Mathf.SmoothStep(0, 1, (glanceElapsed - glanceTrans - glanceHold) / glanceTrans);
+                else
+                {
+                    lookUp = 0f;
+                    glancing = false;
+                    glanceTimer = Random.Range(3f, 6f);
+                }
+                SetOverride(HumanBodyBones.Head, Quaternion.Slerp(headDown, headUp, lookUp));
+                SetOverride(HumanBodyBones.Neck, Quaternion.Slerp(neckDown, neckUp, lookUp));
+            }
+            else
+            {
+                float breathH = Mathf.Sin(t * 1.2f) * 0.8f;
+                SetOverride(HumanBodyBones.Head, headDown * Quaternion.Euler(breathH, 0, 0));
+            }
+
             t += Time.deltaTime;
             yield return null;
         }
@@ -340,6 +633,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     /// SCREAM: head thrown back, arms spread, body shaking
     IEnumerator ScreamRoutine(float duration)
     {
+        CurrentBehaviorName = "尖叫";
         var pose = new Dictionary<HumanBodyBones, Quaternion> {
             [HumanBodyBones.Head] = Rest(HumanBodyBones.Head) * Quaternion.Euler(-20f, 0, 0),
             [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(-5f, 0, 0),
@@ -360,88 +654,176 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         }
     }
 
-    /// HIT DESK: repeated right arm slam toward desk
+    /// HIT DESK: multi-phase slap with easing, impact vibration, and recoil.
     IEnumerator HitDeskRoutine(float duration)
     {
+        CurrentBehaviorName = "拍桌子";
+        while (!_restPoseCaptured) yield return null;
+
         float t = 0;
         int hits = 0;
-        int maxHits = Mathf.Max(2, Mathf.RoundToInt(duration / 0.6f));
+        int maxHits = Mathf.Max(2, Mathf.RoundToInt(duration / 0.75f));
 
         while (t < duration && hits < maxHits && _behaviorActive)
         {
-            // Raise arm phase
-            float phase = 0;
-            while (phase < 0.2f && _behaviorActive)
+            // ── Preparation: body tenses ──
+            float prep = 0f;
+            while (prep < 0.08f && _behaviorActive)
             {
-                float p = phase / 0.2f;
-                SetOverride(HumanBodyBones.RightUpperArm,
-                    Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(20f * p, 0, -40f * p));
-                SetOverride(HumanBodyBones.RightLowerArm,
-                    Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, 0, 0));
-                phase += Time.deltaTime;
-                t += Time.deltaTime;
-                yield return null;
-            }
-
-            // Slam down phase
-            phase = 0;
-            while (phase < 0.15f && _behaviorActive)
-            {
-                float p = phase / 0.15f;
-                SetOverride(HumanBodyBones.RightUpperArm,
-                    Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(50f * p, 0, 0));
-                SetOverride(HumanBodyBones.RightLowerArm,
-                    Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, -80f * p, 0));
+                float p = prep / 0.08f;
                 SetOverride(HumanBodyBones.Spine,
-                    Rest(HumanBodyBones.Spine) * Quaternion.Euler(5f * p, 0, 0));
-                phase += Time.deltaTime;
-                t += Time.deltaTime;
+                    Rest(HumanBodyBones.Spine) * Quaternion.Euler(-2f * p, 0, 0));
+                prep += Time.deltaTime; t += Time.deltaTime;
                 yield return null;
             }
 
-            // Impact hold
-            yield return new WaitForSeconds(0.15f);
-            t += 0.15f;
+            // ── Lift: arm rises with deceleration (ease-out) ──
+            float lift = 0f;
+            const float liftDur = 0.22f;
+            while (lift < liftDur && _behaviorActive)
+            {
+                float raw = lift / liftDur;
+                float p = 1f - (1f - raw) * (1f - raw); // ease-out quadratic
+                SetOverride(HumanBodyBones.RightUpperArm,
+                    Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(15f * p, 0, -45f * p));
+                SetOverride(HumanBodyBones.RightLowerArm,
+                    Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, 20f * p, 0));
+                SetOverride(HumanBodyBones.Spine,
+                    Rest(HumanBodyBones.Spine) * Quaternion.Euler(-3f, 0, 0));
+                lift += Time.deltaTime; t += Time.deltaTime;
+                yield return null;
+            }
+
+            // ── Strike: arm accelerates downward (ease-in) ──
+            float strike = 0f;
+            const float strikeDur = 0.10f;
+            while (strike < strikeDur && _behaviorActive)
+            {
+                float raw = strike / strikeDur;
+                float p = raw * raw; // ease-in: accelerates into impact
+                SetOverride(HumanBodyBones.RightUpperArm,
+                    Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(
+                        Mathf.Lerp(15f, 55f, p), 0, Mathf.Lerp(-45f, 0f, p)));
+                SetOverride(HumanBodyBones.RightLowerArm,
+                    Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, Mathf.Lerp(20f, -85f, p), 0));
+                SetOverride(HumanBodyBones.Spine,
+                    Rest(HumanBodyBones.Spine) * Quaternion.Euler(Mathf.Lerp(-3f, 8f, p), 0, 0));
+                SetOverride(HumanBodyBones.Head,
+                    Rest(HumanBodyBones.Head) * Quaternion.Euler(4f * p, 0, 0));
+                strike += Time.deltaTime; t += Time.deltaTime;
+                yield return null;
+            }
+
+            // ── Impact: freeze + high-frequency vibration ──
+            float impact = 0f;
+            const float impactDur = 0.10f;
+            while (impact < impactDur && _behaviorActive)
+            {
+                float decay = 1f - impact / impactDur;
+                float shake = Mathf.Sin(impact * 55f) * 2.5f * decay;
+                SetOverride(HumanBodyBones.RightHand,
+                    Rest(HumanBodyBones.RightHand) * Quaternion.Euler(shake, shake * 0.4f, 0));
+                SetOverride(HumanBodyBones.Spine,
+                    Rest(HumanBodyBones.Spine) * Quaternion.Euler(8f, shake * 0.3f, 0));
+                impact += Time.deltaTime; t += Time.deltaTime;
+                yield return null;
+            }
+
+            // ── Recoil: small bounce-back ──
+            float recoil = 0f;
+            const float recoilDur = 0.15f;
+            while (recoil < recoilDur && _behaviorActive)
+            {
+                float p = Mathf.SmoothStep(0, 1, recoil / recoilDur);
+                SetOverride(HumanBodyBones.RightUpperArm,
+                    Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(
+                        Mathf.Lerp(55f, 30f, p), 0, Mathf.Lerp(0, -15f, p)));
+                SetOverride(HumanBodyBones.RightLowerArm,
+                    Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, Mathf.Lerp(-85f, -35f, p), 0));
+                SetOverride(HumanBodyBones.Spine,
+                    Rest(HumanBodyBones.Spine) * Quaternion.Euler(Mathf.Lerp(8f, 2f, p), 0, 0));
+                SetOverride(HumanBodyBones.Head,
+                    Rest(HumanBodyBones.Head) * Quaternion.Euler(Mathf.Lerp(4f, 0f, p), 0, 0));
+                recoil += Time.deltaTime; t += Time.deltaTime;
+                yield return null;
+            }
+
+            yield return new WaitForSeconds(0.08f);
+            t += 0.08f;
             hits++;
         }
     }
 
-    /// PUSH CLASSMATE: lean torso + extend arms toward target
+    /// PUSH CLASSMATE: wind-up → lean → accelerating thrust → recovery.
     IEnumerator PushClassmateRoutine(Transform target, float duration)
     {
+        CurrentBehaviorName = "推同学";
+        while (!_restPoseCaptured) yield return null;
+
         Vector3 dir = target != null
             ? (target.position - transform.position).normalized
             : transform.right;
+        dir.y = 0; dir.Normalize();
 
         float yAngle = Vector3.SignedAngle(transform.forward, dir, Vector3.up);
         float yaw = Mathf.Clamp(yAngle, -60f, 60f);
 
-        var leanPose = new Dictionary<HumanBodyBones, Quaternion> {
-            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(15f, yaw * 0.5f, 0),
-            [HumanBodyBones.RightUpperArm] = Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(40f, yaw * 0.3f, -20f),
-            [HumanBodyBones.RightLowerArm] = Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, -40f, 0),
-            [HumanBodyBones.LeftUpperArm] = Rest(HumanBodyBones.LeftUpperArm) * Quaternion.Euler(40f, yaw * 0.3f, 20f),
-            [HumanBodyBones.LeftLowerArm] = Rest(HumanBodyBones.LeftLowerArm) * Quaternion.Euler(0, 40f, 0),
+        // Phase 1 — Wind-up: lean back, tense arms
+        var windUp = new Dictionary<HumanBodyBones, Quaternion> {
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(-5f, yaw * 0.3f, 0),
+            [HumanBodyBones.RightUpperArm] = Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(25f, 0, -25f),
+            [HumanBodyBones.LeftUpperArm]  = Rest(HumanBodyBones.LeftUpperArm)  * Quaternion.Euler(25f, 0, 25f),
+            [HumanBodyBones.Head] = Rest(HumanBodyBones.Head) * Quaternion.Euler(0, yaw * 0.4f, 0),
         };
+        yield return StartCoroutine(TransitionTo(windUp, 0.2f));
 
-        yield return StartCoroutine(TransitionTo(leanPose, 0.3f));
+        // Phase 2 — Lean + extend arms toward target
+        var leanPose = new Dictionary<HumanBodyBones, Quaternion> {
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(22f, yaw * 0.5f, 0),
+            [HumanBodyBones.RightUpperArm] = Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(55f, yaw * 0.3f, -18f),
+            [HumanBodyBones.RightLowerArm] = Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, -50f, 0),
+            [HumanBodyBones.LeftUpperArm]  = Rest(HumanBodyBones.LeftUpperArm)  * Quaternion.Euler(55f, yaw * 0.3f, 18f),
+            [HumanBodyBones.LeftLowerArm]  = Rest(HumanBodyBones.LeftLowerArm)  * Quaternion.Euler(0, 50f, 0),
+            [HumanBodyBones.Head] = Rest(HumanBodyBones.Head) * Quaternion.Euler(0, yaw * 0.5f, 0),
+        };
+        yield return StartCoroutine(TransitionTo(leanPose, 0.15f));
 
-        // Push thrust
-        float thrust = 0;
-        while (thrust < 0.3f && _behaviorActive)
+        // Phase 3 — Push thrust (ease-in acceleration)
+        float thrust = 0f;
+        const float thrustDur = 0.18f;
+        while (thrust < thrustDur && _behaviorActive)
         {
-            float p = thrust / 0.3f;
-            SetOverride(HumanBodyBones.Spine, Rest(HumanBodyBones.Spine) * Quaternion.Euler(25f * p, yaw * 0.7f, 0));
+            float raw = thrust / thrustDur;
+            float p = raw * raw;
+            SetOverride(HumanBodyBones.Spine,
+                Rest(HumanBodyBones.Spine) * Quaternion.Euler(Mathf.Lerp(22f, 32f, p), yaw * 0.7f, 0));
+            SetOverride(HumanBodyBones.RightLowerArm,
+                Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, Mathf.Lerp(-50f, -12f, p), 0));
+            SetOverride(HumanBodyBones.LeftLowerArm,
+                Rest(HumanBodyBones.LeftLowerArm) * Quaternion.Euler(0, Mathf.Lerp(50f, 12f, p), 0));
             thrust += Time.deltaTime;
             yield return null;
         }
 
-        yield return new WaitForSeconds(Mathf.Max(0, duration - 0.6f));
+        // Phase 4 — Recovery
+        yield return new WaitForSeconds(0.15f);
+        var recovery = new Dictionary<HumanBodyBones, Quaternion> {
+            [HumanBodyBones.Spine]         = Rest(HumanBodyBones.Spine) * Quaternion.Euler(3f, 0, 0),
+            [HumanBodyBones.RightUpperArm] = Rest(HumanBodyBones.RightUpperArm),
+            [HumanBodyBones.RightLowerArm] = Rest(HumanBodyBones.RightLowerArm),
+            [HumanBodyBones.LeftUpperArm]  = Rest(HumanBodyBones.LeftUpperArm),
+            [HumanBodyBones.LeftLowerArm]  = Rest(HumanBodyBones.LeftLowerArm),
+            [HumanBodyBones.Head]          = Rest(HumanBodyBones.Head),
+        };
+        yield return StartCoroutine(TransitionTo(recovery, 0.35f));
+
+        yield return new WaitForSeconds(Mathf.Max(0, duration - 1.1f));
     }
 
     /// LIE DOWN / SLUMP: spine and head collapse forward
     IEnumerator LieDownRoutine(float duration)
     {
+        CurrentBehaviorName = "趴桌";
         var pose = new Dictionary<HumanBodyBones, Quaternion> {
             [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(35f, 0, 0),
             [HumanBodyBones.Neck] = Rest(HumanBodyBones.Neck) * Quaternion.Euler(25f, 0, 0),
@@ -471,6 +853,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     /// SPEAKING MOTION: natural head movement with varied rhythm
     IEnumerator SpeakingMotionRoutine(float duration)
     {
+        CurrentBehaviorName = "说话";
         float t = 0;
         while (t < duration && _behaviorActive)
         {
@@ -495,9 +878,10 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         }
     }
 
-    /// REACTION: flinch when pushed by neighbor
+    /// REACTION: generic flinch (legacy fallback — use PlayPushedReaction for pushes).
     IEnumerator ReactionRoutine(string type, float duration)
     {
+        CurrentBehaviorName = "反应";
         var pose = new Dictionary<HumanBodyBones, Quaternion>();
 
         if (type == "pushed")
@@ -513,5 +897,499 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
         yield return StartCoroutine(TransitionTo(pose, 0.15f));
         yield return new WaitForSeconds(duration);
+    }
+
+    /// PUSHED REACTION: directional stumble with displacement + recovery.
+    IEnumerator PushedReactionRoutine(Vector3 pushDir, float duration)
+    {
+        CurrentBehaviorName = "被推";
+        while (!_restPoseCaptured) yield return null;
+
+        pushDir.y = 0;
+        if (pushDir.sqrMagnitude < 0.001f) pushDir = -transform.forward;
+        pushDir.Normalize();
+
+        float pushAngle = Vector3.SignedAngle(transform.forward, pushDir, Vector3.up);
+        float leanSide = Mathf.Clamp(pushAngle / 90f, -1f, 1f);
+
+        // Phase 1 — Impact flinch (fast)
+        var impactPose = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) *
+                Quaternion.Euler(-5f, 0, leanSide * 18f),
+            [HumanBodyBones.Head] = Rest(HumanBodyBones.Head) *
+                Quaternion.Euler(0, 0, leanSide * 14f),
+            [HumanBodyBones.LeftUpperArm] = Rest(HumanBodyBones.LeftUpperArm) *
+                Quaternion.Euler(0, 0, 25f),
+            [HumanBodyBones.RightUpperArm] = Rest(HumanBodyBones.RightUpperArm) *
+                Quaternion.Euler(0, 0, -25f),
+        };
+        yield return StartCoroutine(TransitionTo(impactPose, 0.1f));
+
+        // Phase 2 — Displacement: slide smoothly in push direction
+        Vector3 startPos = transform.position;
+        Vector3 displaceTarget = startPos + pushDir * 0.3f;
+        float slideT = 0f;
+        const float slideDur = 0.3f;
+        while (slideT < slideDur && _behaviorActive)
+        {
+            float p = Mathf.SmoothStep(0, 1, slideT / slideDur);
+            transform.position = Vector3.Lerp(startPos, displaceTarget, p);
+
+            float wobble = Mathf.Sin(slideT * 22f) * 3f * (1f - slideT / slideDur);
+            SetOverride(HumanBodyBones.Spine,
+                impactPose[HumanBodyBones.Spine] * Quaternion.Euler(wobble, 0, 0));
+            slideT += Time.deltaTime;
+            yield return null;
+        }
+        transform.position = displaceTarget;
+
+        // Phase 3 — Recovery to slightly off-balance stance
+        var recovery = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.Spine]         = Rest(HumanBodyBones.Spine) * Quaternion.Euler(4f, 0, leanSide * 3f),
+            [HumanBodyBones.Head]          = Rest(HumanBodyBones.Head),
+            [HumanBodyBones.LeftUpperArm]  = Rest(HumanBodyBones.LeftUpperArm),
+            [HumanBodyBones.RightUpperArm] = Rest(HumanBodyBones.RightUpperArm),
+        };
+        yield return StartCoroutine(TransitionTo(recovery, 0.45f));
+
+        float holdT = 0f;
+        float holdDur = Mathf.Max(0, duration - 0.9f);
+        while (holdT < holdDur && _behaviorActive)
+        {
+            float breath = Mathf.Sin(holdT * 2f) * 1.5f;
+            SetOverride(HumanBodyBones.Spine,
+                recovery[HumanBodyBones.Spine] * Quaternion.Euler(breath, 0, 0));
+            holdT += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    /// LISTEN TO CLASSMATE: face speaker using head bone targeting + attentive nod.
+    IEnumerator ListenToClassmateRoutine(Transform speaker, float duration)
+    {
+        CurrentBehaviorName = "听同学说话";
+        while (!_restPoseCaptured) yield return null;
+
+        ComputeFaceTargetAngles(speaker, out float yaw, out float pitch);
+        yaw = Mathf.Clamp(yaw, -85f, 85f);
+        pitch = Mathf.Clamp(pitch, -15f, 15f);
+
+        bool hasChest = _restPose.ContainsKey(HumanBodyBones.Chest);
+        float spineF = hasChest ? 0.15f : 0.20f;
+        float chestF = hasChest ? 0.10f : 0f;
+        float neckF  = hasChest ? 0.30f : 0.35f;
+        float headF  = 1f - spineF - chestF - neckF;
+
+        var listenPose = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(2f, yaw * spineF, 0),
+            [HumanBodyBones.Neck]  = Rest(HumanBodyBones.Neck)  * Quaternion.Euler(pitch * 0.35f, yaw * neckF, 0),
+            [HumanBodyBones.Head]  = Rest(HumanBodyBones.Head)  * Quaternion.Euler(pitch * 0.65f, yaw * headF, 0),
+        };
+        if (hasChest)
+            listenPose[HumanBodyBones.Chest] = Rest(HumanBodyBones.Chest) * Quaternion.Euler(0, yaw * chestF, 0);
+
+        yield return StartCoroutine(TransitionTo(listenPose, 0.5f));
+
+        float t = 0f, endTime = duration > 0 ? duration : 999f;
+        while (t < endTime && _behaviorActive)
+        {
+            float nod  = Mathf.Sin(t * 1.8f) * 2.5f + Mathf.Sin(t * 3.2f) * 1.2f;
+            float tilt = Mathf.Sin(t * 0.9f) * 1.5f;
+
+            SetOverride(HumanBodyBones.Head,
+                Rest(HumanBodyBones.Head) * Quaternion.Euler(
+                    pitch * 0.65f + nod, yaw * headF + tilt, 0));
+            SetOverride(HumanBodyBones.Neck,
+                Rest(HumanBodyBones.Neck) * Quaternion.Euler(
+                    pitch * 0.35f + nod * 0.2f, yaw * neckF, 0));
+
+            t += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    /// ASK QUESTION: eager hand raise + forward lean + palm correction.
+    IEnumerator AskQuestionRoutine(float duration)
+    {
+        CurrentBehaviorName = "举手提问";
+        while (!_restPoseCaptured) yield return null;
+
+        Vector3 up    = Vector3.up;
+        Vector3 right = transform.right;
+        Vector3 fwd   = transform.forward;
+
+        Vector3 upperArmDir = (up * 4f + right * 0.7f + fwd * 0.5f).normalized;
+        Quaternion upperArmTarget = AimBone(
+            HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, upperArmDir);
+
+        Vector3 forearmDir = (up * 2.5f + fwd * 0.6f + right * 0.3f).normalized;
+        Quaternion lowerArmTarget = AimBoneWithPredictedParent(
+            HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand,
+            forearmDir, upperArmTarget);
+
+        // Palm faces forward/inward
+        Quaternion forearmFutureWorld = PredictForearmWorld(upperArmTarget, lowerArmTarget);
+        Vector3 palmDesired = (fwd + Vector3.down * 0.15f).normalized;
+        Quaternion handTarget = ComputePalmCorrectedHand(
+            HumanBodyBones.RightHand, palmDesired, forearmFutureWorld);
+
+        var targets = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.RightUpperArm] = upperArmTarget,
+            [HumanBodyBones.RightLowerArm] = lowerArmTarget,
+            [HumanBodyBones.RightHand]     = handTarget,
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(10f, 0, 0),
+            [HumanBodyBones.Neck]  = Rest(HumanBodyBones.Neck)  * Quaternion.Euler(-8f, 0, 0),
+            [HumanBodyBones.Head]  = Rest(HumanBodyBones.Head)  * Quaternion.Euler(-12f, 4f, 0),
+        };
+        if (_restPose.ContainsKey(HumanBodyBones.Chest))
+            targets[HumanBodyBones.Chest] = Rest(HumanBodyBones.Chest) * Quaternion.Euler(5f, 0, 0);
+
+        yield return StartCoroutine(TransitionTo(targets, 0.5f));
+
+        // Hold — impatient wave on top of palm-corrected base + eager nod
+        float t = 0f, endTime = duration > 0 ? duration : 999f;
+        while (t < endTime && _behaviorActive)
+        {
+            float wave = Mathf.Sin(t * 3.5f) * 3f;
+            float nod  = Mathf.Sin(t * 2.2f) * 2.5f;
+            SetOverride(HumanBodyBones.RightHand,
+                handTarget * Quaternion.Euler(wave, wave * 0.4f, 0));
+            SetOverride(HumanBodyBones.Head,
+                targets[HumanBodyBones.Head] * Quaternion.Euler(nod, 0, 0));
+            t += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    /// DISTRACTED: slouch, look away, idle fidget
+    IEnumerator DistractedRoutine(float duration)
+    {
+        CurrentBehaviorName = "走神";
+        while (!_restPoseCaptured) yield return null;
+
+        // Randomise which side the student looks toward
+        float lookSide = Random.value > 0.5f ? 1f : -1f;
+
+        var slouch = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(-4f, lookSide * 12f, lookSide * 2f),
+            [HumanBodyBones.Neck]  = Rest(HumanBodyBones.Neck)  * Quaternion.Euler(-6f, lookSide * 18f, 0),
+            [HumanBodyBones.Head]  = Rest(HumanBodyBones.Head)  * Quaternion.Euler(-8f, lookSide * 22f, 0),
+        };
+        if (_restPose.ContainsKey(HumanBodyBones.Chest))
+            slouch[HumanBodyBones.Chest] = Rest(HumanBodyBones.Chest) * Quaternion.Euler(-3f, lookSide * 5f, 0);
+
+        yield return StartCoroutine(TransitionTo(slouch, 0.9f));
+
+        float t = 0f, endTime = duration > 0 ? duration : 999f;
+        while (t < endTime && _behaviorActive)
+        {
+            // Slow Perlin-noise look drift — feels organic
+            float lookDrift = (Mathf.PerlinNoise(t * 0.4f, 0f) * 2f - 1f) * 15f * lookSide;
+            float headBob   = Mathf.Sin(t * 0.7f) * 1.8f;
+
+            SetOverride(HumanBodyBones.Head,
+                Rest(HumanBodyBones.Head) * Quaternion.Euler(-8f + headBob, lookDrift, 0));
+            SetOverride(HumanBodyBones.Neck,
+                Rest(HumanBodyBones.Neck) * Quaternion.Euler(-4f, lookDrift * 0.55f, 0));
+
+            // Slight right-hand fidget
+            float fidget = Mathf.Sin(t * 4.2f) * 2.5f;
+            SetOverride(HumanBodyBones.RightHand,
+                Rest(HumanBodyBones.RightHand) * Quaternion.Euler(fidget, 0, fidget * 0.3f));
+
+            t += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    /// TALK TO CLASSMATE: face neighbor using head bone targeting + speaking nod.
+    IEnumerator TalkToClassmateRoutine(Transform neighbor, float duration)
+    {
+        CurrentBehaviorName = "和同学说话";
+        while (!_restPoseCaptured) yield return null;
+
+        ComputeFaceTargetAngles(neighbor, out float yaw, out float pitch);
+        yaw = Mathf.Clamp(yaw, -85f, 85f);
+        pitch = Mathf.Clamp(pitch, -15f, 15f);
+
+        bool hasChest = _restPose.ContainsKey(HumanBodyBones.Chest);
+        float spineF = hasChest ? 0.15f : 0.20f;
+        float chestF = hasChest ? 0.10f : 0f;
+        float neckF  = hasChest ? 0.30f : 0.35f;
+        float headF  = 1f - spineF - chestF - neckF;
+
+        var turnPose = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(0, yaw * spineF, 0),
+            [HumanBodyBones.Neck]  = Rest(HumanBodyBones.Neck)  * Quaternion.Euler(pitch * 0.35f, yaw * neckF, 0),
+            [HumanBodyBones.Head]  = Rest(HumanBodyBones.Head)  * Quaternion.Euler(pitch * 0.65f, yaw * headF, 0),
+        };
+        if (hasChest)
+            turnPose[HumanBodyBones.Chest] = Rest(HumanBodyBones.Chest) * Quaternion.Euler(0, yaw * chestF, 0);
+
+        yield return StartCoroutine(TransitionTo(turnPose, 0.5f));
+
+        float t = 0f, endTime = duration > 0 ? duration : 999f;
+        while (t < endTime && _behaviorActive)
+        {
+            float nod   = Mathf.Sin(t * 2.8f) * 3f + Mathf.Sin(t * 4.5f) * 1.5f;
+            float tilt  = Mathf.Sin(t * 1.4f) * 2f;
+            float emph  = Mathf.Clamp01(Mathf.Sin(t * 1.1f)) * Mathf.Sin(t * 6f) * 2f;
+
+            SetOverride(HumanBodyBones.Head,
+                Rest(HumanBodyBones.Head) * Quaternion.Euler(
+                    pitch * 0.65f + nod + emph, yaw * headF + tilt, 0));
+            SetOverride(HumanBodyBones.Neck,
+                Rest(HumanBodyBones.Neck) * Quaternion.Euler(
+                    pitch * 0.35f + nod * 0.3f, yaw * neckF, 0));
+            SetOverride(HumanBodyBones.Spine,
+                Rest(HumanBodyBones.Spine) * Quaternion.Euler(
+                    Mathf.Sin(t * 0.8f) * 1.2f, yaw * spineF, 0));
+
+            t += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    /// LEAVE SEAT: upright stand-up → turn → walk with coordinated limbs → idle.
+    IEnumerator LeaveSeatRoutine(Vector3 targetPos, float moveDuration)
+    {
+        CurrentBehaviorName = "离座";
+        while (!_restPoseCaptured) yield return null;
+        yield return null;
+
+        ComputeStandingLegPose(out var sLU, out var sRU, out var sLL, out var sRL);
+        ComputeHangingArmPose(out var aLU, out var aRU, out var aLL, out var aRL,
+            out var swingL, out var swingR);
+
+        // ── Phase 1: Stand up to proper upright posture ──
+        var standPose = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.Spine]         = Rest(HumanBodyBones.Spine) * Quaternion.Euler(2f, 0, 0),
+            [HumanBodyBones.Neck]          = Rest(HumanBodyBones.Neck),
+            [HumanBodyBones.Head]          = Rest(HumanBodyBones.Head),
+            [HumanBodyBones.LeftUpperLeg]  = sLU,
+            [HumanBodyBones.RightUpperLeg] = sRU,
+            [HumanBodyBones.LeftLowerLeg]  = sLL,
+            [HumanBodyBones.RightLowerLeg] = sRL,
+            [HumanBodyBones.LeftUpperArm]  = aLU,
+            [HumanBodyBones.RightUpperArm] = aRU,
+            [HumanBodyBones.LeftLowerArm]  = aLL,
+            [HumanBodyBones.RightLowerArm] = aRL,
+        };
+        if (_restPose.ContainsKey(HumanBodyBones.Chest))
+            standPose[HumanBodyBones.Chest] = Rest(HumanBodyBones.Chest) * Quaternion.Euler(1f, 0, 0);
+        if (_restPose.ContainsKey(HumanBodyBones.UpperChest))
+            standPose[HumanBodyBones.UpperChest] = Rest(HumanBodyBones.UpperChest);
+
+        yield return StartCoroutine(TransitionTo(standPose, 0.6f));
+
+        // ── Phase 2: Rotate root toward walk target ──
+        Vector3 moveDir = (targetPos - transform.position);
+        moveDir.y = 0;
+        if (moveDir.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRot = Quaternion.LookRotation(moveDir.normalized);
+            float rotElapsed = 0f;
+            Quaternion startRot = transform.rotation;
+            while (rotElapsed < 0.35f)
+            {
+                transform.rotation = Quaternion.Slerp(startRot, targetRot,
+                    Mathf.SmoothStep(0, 1, rotElapsed / 0.35f));
+                rotElapsed += Time.deltaTime;
+                yield return null;
+            }
+            transform.rotation = targetRot;
+        }
+
+        // ── Phase 3: Walk with procedural locomotion (upright throughout) ──
+        Vector3 startPos = transform.position;
+        float elapsed = 0f;
+        moveDuration = Mathf.Max(0.5f, moveDuration);
+        const float stepFreq = 4.5f;
+        const float legSwing = 20f;
+        const float kneeBend = 35f;
+        const float armSwingDeg = 20f;
+        const float elbowBendDeg = 15f;
+
+        while (elapsed < moveDuration && _behaviorActive)
+        {
+            float p = Mathf.SmoothStep(0, 1, elapsed / moveDuration);
+            transform.position = Vector3.Lerp(startPos, targetPos, p);
+
+            float cycle = elapsed * stepFreq;
+            float leftStep  = Mathf.Sin(cycle);
+            float rightStep = -leftStep;
+
+            float sway = Mathf.Sin(cycle) * 1.5f;
+            float bob  = Mathf.Abs(Mathf.Sin(cycle)) * 0.8f;
+
+            SetOverride(HumanBodyBones.Spine,
+                Rest(HumanBodyBones.Spine) * Quaternion.Euler(2f + bob, 0, sway));
+            SetOverride(HumanBodyBones.Neck,
+                Rest(HumanBodyBones.Neck));
+            SetOverride(HumanBodyBones.Head,
+                Rest(HumanBodyBones.Head) * Quaternion.Euler(0, 0, sway * 0.2f));
+
+            SetOverride(HumanBodyBones.LeftUpperLeg,
+                sLU * Quaternion.Euler(leftStep * legSwing, 0, 0));
+            SetOverride(HumanBodyBones.RightUpperLeg,
+                sRU * Quaternion.Euler(rightStep * legSwing, 0, 0));
+
+            float leftKnee  = Mathf.Max(0, Mathf.Cos(cycle))  * kneeBend;
+            float rightKnee = Mathf.Max(0, -Mathf.Cos(cycle)) * kneeBend;
+            SetOverride(HumanBodyBones.LeftLowerLeg,
+                sLL * Quaternion.Euler(leftKnee, 0, 0));
+            SetOverride(HumanBodyBones.RightLowerLeg,
+                sRL * Quaternion.Euler(rightKnee, 0, 0));
+
+            SetOverride(HumanBodyBones.LeftUpperArm,
+                aLU * Quaternion.AngleAxis(rightStep * armSwingDeg, swingL));
+            SetOverride(HumanBodyBones.RightUpperArm,
+                aRU * Quaternion.AngleAxis(leftStep * armSwingDeg, swingR));
+            float leftElbow  = Mathf.Max(0, rightStep) * elbowBendDeg;
+            float rightElbow = Mathf.Max(0, leftStep)  * elbowBendDeg;
+            SetOverride(HumanBodyBones.LeftLowerArm,
+                aLL * Quaternion.AngleAxis(leftElbow, swingL));
+            SetOverride(HumanBodyBones.RightLowerArm,
+                aRL * Quaternion.AngleAxis(rightElbow, swingR));
+
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+        transform.position = targetPos;
+
+        // ── Phase 4: Idle standing with gentle breathing ──
+        var idlePose = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.Spine]         = Rest(HumanBodyBones.Spine) * Quaternion.Euler(2f, 0, 0),
+            [HumanBodyBones.Neck]          = Rest(HumanBodyBones.Neck),
+            [HumanBodyBones.Head]          = Rest(HumanBodyBones.Head),
+            [HumanBodyBones.LeftUpperLeg]  = sLU,
+            [HumanBodyBones.RightUpperLeg] = sRU,
+            [HumanBodyBones.LeftLowerLeg]  = sLL,
+            [HumanBodyBones.RightLowerLeg] = sRL,
+            [HumanBodyBones.LeftUpperArm]  = aLU,
+            [HumanBodyBones.RightUpperArm] = aRU,
+            [HumanBodyBones.LeftLowerArm]  = aLL,
+            [HumanBodyBones.RightLowerArm] = aRL,
+        };
+        yield return StartCoroutine(TransitionTo(idlePose, 0.3f));
+
+        float idleT = 0f;
+        while (_behaviorActive)
+        {
+            float breath = Mathf.Sin(idleT * 1.2f) * 1f;
+            SetOverride(HumanBodyBones.Spine,
+                Rest(HumanBodyBones.Spine) * Quaternion.Euler(2f + breath * 0.5f, 0, 0));
+            idleT += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    /// RETURN TO SEAT: walk back upright with procedural legs, then sit down.
+    IEnumerator ReturnToSeatRoutine(float moveDuration)
+    {
+        CurrentBehaviorName = "回座位";
+        while (!_restPoseCaptured) yield return null;
+        yield return null;
+
+        ComputeStandingLegPose(out var sLU, out var sRU, out var sLL, out var sRL);
+        ComputeHangingArmPose(out var aLU, out var aRU, out var aLL, out var aRL,
+            out var swingL, out var swingR);
+
+        Vector3 targetPos = seatPosition;
+
+        var walkPose = new Dictionary<HumanBodyBones, Quaternion>
+        {
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(2f, 0, 0),
+            [HumanBodyBones.Neck]  = Rest(HumanBodyBones.Neck),
+            [HumanBodyBones.Head]  = Rest(HumanBodyBones.Head),
+            [HumanBodyBones.LeftUpperLeg]  = sLU,
+            [HumanBodyBones.RightUpperLeg] = sRU,
+            [HumanBodyBones.LeftLowerLeg]  = sLL,
+            [HumanBodyBones.RightLowerLeg] = sRL,
+            [HumanBodyBones.LeftUpperArm]  = aLU,
+            [HumanBodyBones.RightUpperArm] = aRU,
+            [HumanBodyBones.LeftLowerArm]  = aLL,
+            [HumanBodyBones.RightLowerArm] = aRL,
+        };
+        yield return StartCoroutine(TransitionTo(walkPose, 0.3f));
+
+        // Turn toward seat
+        Vector3 dir = (targetPos - transform.position);
+        dir.y = 0;
+        if (dir.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRot = Quaternion.LookRotation(dir.normalized);
+            float rotT = 0f;
+            Quaternion startRot = transform.rotation;
+            while (rotT < 0.25f)
+            {
+                transform.rotation = Quaternion.Slerp(startRot, targetRot,
+                    Mathf.SmoothStep(0, 1, rotT / 0.25f));
+                rotT += Time.deltaTime;
+                yield return null;
+            }
+            transform.rotation = targetRot;
+        }
+
+        // Walk with procedural legs (upright)
+        Vector3 startPos = transform.position;
+        float elapsed = 0f;
+        moveDuration = Mathf.Max(0.5f, moveDuration);
+        const float stepFreq = 4.5f;
+        const float legSwing = 20f;
+        const float kneeBend = 35f;
+        const float armSwingDeg = 20f;
+        const float elbowBendDeg = 15f;
+
+        while (elapsed < moveDuration && _behaviorActive)
+        {
+            float p = Mathf.SmoothStep(0, 1, elapsed / moveDuration);
+            transform.position = Vector3.Lerp(startPos, targetPos, p);
+
+            float cycle = elapsed * stepFreq;
+            float leftStep  = Mathf.Sin(cycle);
+            float rightStep = -leftStep;
+            float sway = Mathf.Sin(cycle) * 1.5f;
+
+            SetOverride(HumanBodyBones.Spine,
+                Rest(HumanBodyBones.Spine) * Quaternion.Euler(2f, 0, sway));
+            SetOverride(HumanBodyBones.Head,
+                Rest(HumanBodyBones.Head) * Quaternion.Euler(0, 0, sway * 0.2f));
+
+            SetOverride(HumanBodyBones.LeftUpperLeg,
+                sLU * Quaternion.Euler(leftStep * legSwing, 0, 0));
+            SetOverride(HumanBodyBones.RightUpperLeg,
+                sRU * Quaternion.Euler(rightStep * legSwing, 0, 0));
+
+            float leftKnee  = Mathf.Max(0, Mathf.Cos(cycle))  * kneeBend;
+            float rightKnee = Mathf.Max(0, -Mathf.Cos(cycle)) * kneeBend;
+            SetOverride(HumanBodyBones.LeftLowerLeg,
+                sLL * Quaternion.Euler(leftKnee, 0, 0));
+            SetOverride(HumanBodyBones.RightLowerLeg,
+                sRL * Quaternion.Euler(rightKnee, 0, 0));
+
+            SetOverride(HumanBodyBones.LeftUpperArm,
+                aLU * Quaternion.AngleAxis(rightStep * armSwingDeg, swingL));
+            SetOverride(HumanBodyBones.RightUpperArm,
+                aRU * Quaternion.AngleAxis(leftStep * armSwingDeg, swingR));
+            float leftElbow  = Mathf.Max(0, rightStep) * elbowBendDeg;
+            float rightElbow = Mathf.Max(0, leftStep)  * elbowBendDeg;
+            SetOverride(HumanBodyBones.LeftLowerArm,
+                aLL * Quaternion.AngleAxis(leftElbow, swingL));
+            SetOverride(HumanBodyBones.RightLowerArm,
+                aRL * Quaternion.AngleAxis(rightElbow, swingR));
+
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+        transform.position = targetPos;
     }
 }

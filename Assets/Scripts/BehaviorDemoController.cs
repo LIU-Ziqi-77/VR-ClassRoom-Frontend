@@ -14,7 +14,11 @@ using VRM;
 ///   Tab        Cycle to next student
 ///   Q          Speak
 ///   W          Raise Hand
+///   A          Ask Question (hand up + lean forward)
 ///   E          Lie Down / Slump
+///   D          Distracted (look away + slouch)
+///   C          Talk to Nearby Classmate
+///   L          Leave Seat (or Return to Seat if already away)
 ///   R          Take Notes
 ///   T          Hit Desk
 ///   Y          Scream
@@ -41,15 +45,27 @@ public class BehaviorDemoController : MonoBehaviour
     };
 
     [Header("Behavior Durations")]
-    public float raiseHandDuration = 5f;
-    public float takeNotesDuration = 6f;
-    public float screamDuration = 2f;
-    public float hitDeskDuration = 3f;
-    public float pushDuration = 2f;
-    public float lieDownDuration = 8f;
+    public float raiseHandDuration  = 5f;
+    public float askQuestionDuration = 5f;
+    public float takeNotesDuration  = 6f;
+    public float distractedDuration = 8f;
+    public float talkClassmateDuration = 6f;
+    public float leaveSeatMoveDuration  = 2.5f;
+    public float returnSeatMoveDuration = 2f;
+    public float screamDuration     = 2f;
+    public float hitDeskDuration    = 3f;
+    public float pushDuration       = 2f;
+    public float lieDownDuration    = 8f;
+
+    [Tooltip("How far from the seat the student walks when leaving (world units).")]
+    public float leaveSeatDistance = 2.5f;
 
     [Header("State")]
     [SerializeField] int selectedIndex;
+
+    /// <summary>Exposed so StudentBehaviorVisuals can read the current selection.</summary>
+    public int SelectedIndex => selectedIndex;
+
     int _textIndex;
 
     string _lastAction = "none";
@@ -151,6 +167,9 @@ public class BehaviorDemoController : MonoBehaviour
     {
         if (students.Count == 0) return;
 
+        // Skip behavior shortcuts while right-mouse is held (camera mode)
+        if (Input.GetMouseButton(1)) return;
+
         for (int i = 0; i < Mathf.Min(9, students.Count); i++)
         {
             if (Input.GetKeyDown(KeyCode.Alpha1 + i))
@@ -166,13 +185,17 @@ public class BehaviorDemoController : MonoBehaviour
             Log($"Tab → [{selectedIndex}]: {CurrentName}");
         }
 
-        if (Input.GetKeyDown(KeyCode.Q)) DoTrigger("Speak", TriggerSpeak);
-        if (Input.GetKeyDown(KeyCode.W)) DoTrigger("RaiseHand", TriggerRaiseHand);
-        if (Input.GetKeyDown(KeyCode.E)) DoTrigger("LieDown", TriggerLieDown);
-        if (Input.GetKeyDown(KeyCode.R)) DoTrigger("TakeNotes", TriggerTakeNotes);
-        if (Input.GetKeyDown(KeyCode.T)) DoTrigger("HitDesk", TriggerHitDesk);
-        if (Input.GetKeyDown(KeyCode.Y)) DoTrigger("Scream", TriggerScream);
-        if (Input.GetKeyDown(KeyCode.U)) DoTrigger("Push", TriggerPushClassmate);
+        if (Input.GetKeyDown(KeyCode.Q)) DoTrigger("Speak",           TriggerSpeak);
+        if (Input.GetKeyDown(KeyCode.W)) DoTrigger("RaiseHand",       TriggerRaiseHand);
+        if (Input.GetKeyDown(KeyCode.A)) DoTrigger("AskQuestion",     TriggerAskQuestion);
+        if (Input.GetKeyDown(KeyCode.E)) DoTrigger("LieDown",         TriggerLieDown);
+        if (Input.GetKeyDown(KeyCode.D)) DoTrigger("Distracted",      TriggerDistracted);
+        if (Input.GetKeyDown(KeyCode.C)) DoTrigger("TalkClassmate",   TriggerTalkToClassmate);
+        if (Input.GetKeyDown(KeyCode.L)) DoTrigger("LeaveSeat",       TriggerLeaveSeat);
+        if (Input.GetKeyDown(KeyCode.R)) DoTrigger("TakeNotes",       TriggerTakeNotes);
+        if (Input.GetKeyDown(KeyCode.T)) DoTrigger("HitDesk",         TriggerHitDesk);
+        if (Input.GetKeyDown(KeyCode.Y)) DoTrigger("Scream",          TriggerScream);
+        if (Input.GetKeyDown(KeyCode.U)) DoTrigger("Push",            TriggerPushClassmate);
 
         if (Input.GetKeyDown(KeyCode.S)) { StopCurrent(); _lastAction = "Stop"; }
         if (Input.GetKeyDown(KeyCode.X)) { StopAll(); _lastAction = "StopAll"; }
@@ -232,8 +255,99 @@ public class BehaviorDemoController : MonoBehaviour
         var pba = CurrentPBA;
         if (pba == null) { _lastDiag = "RaiseHand failed: no student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
         pba.PlayRaiseHand(raiseHandDuration);
-        _lastAction = "Raise Hand";
+        _lastAction = "举手";
         Log("Raise Hand");
+    }
+
+    public void TriggerAskQuestion()
+    {
+        var pba = CurrentPBA;
+        if (pba == null) { _lastDiag = "AskQuestion failed: no student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
+        pba.PlayAskQuestion(askQuestionDuration);
+        _lastAction = "举手提问";
+        Log("Ask Question");
+
+        // Optionally trigger speech alongside the gesture
+        var speech = pba.GetComponent<FallbackSpeechService>();
+        if (speech != null)
+        {
+            string[] questionTexts = {
+                "老师，我有一个问题！",
+                "这道题我不明白，可以再讲一次吗？",
+                "老师，请问这个答案是对的吗？",
+                "我想举手回答！"
+            };
+            speech.SpeakWithoutMotion(questionTexts[Random.Range(0, questionTexts.Length)], askQuestionDuration * 0.5f);
+        }
+    }
+
+    public void TriggerDistracted()
+    {
+        var pba = CurrentPBA;
+        if (pba == null) { _lastDiag = "Distracted failed: no student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
+        pba.PlayDistracted(distractedDuration);
+        _lastAction = "走神";
+        Log("Distracted");
+    }
+
+    public void TriggerTalkToClassmate()
+    {
+        var pba = CurrentPBA;
+        if (pba == null) { _lastDiag = "TalkClassmate failed: no student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
+
+        Transform neighbor = FindNearestNeighbor(pba.transform);
+        pba.PlayTalkToClassmate(neighbor, talkClassmateDuration);
+        _lastAction = $"说话→{(neighbor != null ? neighbor.gameObject.name : "none")}";
+        Log(_lastAction);
+
+        // Neighbor faces the speaker and listens with attentive nodding
+        if (neighbor != null)
+        {
+            var neighborPba = neighbor.GetComponent<ProceduralBehaviorAnimator>();
+            if (neighborPba != null)
+                neighborPba.PlayListenToClassmate(pba.transform, talkClassmateDuration);
+        }
+
+        // Trigger fallback speech on the initiator
+        var speech = pba.GetComponent<FallbackSpeechService>();
+        if (speech != null)
+        {
+            string[] chatTexts = {
+                "你作业写完了吗？",
+                "这道题你怎么做的？",
+                "等一下一起去吃饭吧！",
+                "刚才老师说啥了？"
+            };
+            speech.SpeakWithoutMotion(chatTexts[Random.Range(0, chatTexts.Length)], talkClassmateDuration * 0.4f);
+        }
+    }
+
+    public void TriggerLeaveSeat()
+    {
+        var pba = CurrentPBA;
+        if (pba == null) { _lastDiag = "LeaveSeat failed: no student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
+
+        if (pba.seatPositionCaptured && pba.IsBehaviorActive && pba.CurrentBehaviorName == "离座")
+        {
+            // Already away — return to seat
+            pba.PlayReturnToSeat(returnSeatMoveDuration);
+            _lastAction = "回座位";
+            Log("Return To Seat");
+        }
+        else
+        {
+            // Walk sideways into the aisle (avoids clipping through desk behind).
+            // Students face forward; backward = into the next desk row.
+            float side = Random.value > 0.5f ? 1f : -1f;
+            Vector3 awayDir = pba.transform.right * side + pba.transform.forward * 0.3f;
+            awayDir.y = 0;
+            awayDir.Normalize();
+            Vector3 target = pba.transform.position + awayDir * leaveSeatDistance;
+
+            pba.PlayLeaveSeat(target, leaveSeatMoveDuration);
+            _lastAction = "离座跑开";
+            Log($"Leave Seat → {target}");
+        }
     }
 
     public void TriggerLieDown()
@@ -291,7 +405,10 @@ public class BehaviorDemoController : MonoBehaviour
         {
             var neighborAnim = neighbor.GetComponent<ProceduralBehaviorAnimator>();
             if (neighborAnim != null)
-                neighborAnim.PlayReaction("pushed", 1.5f);
+            {
+                Vector3 pushDir = (neighbor.position - pba.transform.position).normalized;
+                neighborAnim.PlayPushedReaction(pushDir, 1.5f);
+            }
         }
     }
 
@@ -338,13 +455,13 @@ public class BehaviorDemoController : MonoBehaviour
     {
         GUI.enabled = true;
 
-        float w = 300, h = 420;
+        float w = 320, h = 520;
         GUILayout.BeginArea(new Rect(10, 10, w, h));
 
         var titleStyle = new GUIStyle(GUI.skin.label) {
             richText = true, fontSize = 15, fontStyle = FontStyle.Bold
         };
-        var infoStyle = new GUIStyle(GUI.skin.label) { richText = true, fontSize = 11 };
+        var infoStyle  = new GUIStyle(GUI.skin.label) { richText = true, fontSize = 11 };
         var smallStyle = new GUIStyle(GUI.skin.label) { richText = true, fontSize = 10 };
 
         GUILayout.Label("VR Classroom — Behavior Demo", titleStyle);
@@ -352,12 +469,17 @@ public class BehaviorDemoController : MonoBehaviour
         int count = students.Count;
         string selName = CurrentName;
 
-        GUILayout.Label($"<b>{selName}</b>  [{selectedIndex + 1}/{Mathf.Max(1, count)}]", infoStyle);
+        // Current behavior status
+        var pba = CurrentPBA;
+        string behaviorLabel = (pba != null && pba.IsBehaviorActive && !string.IsNullOrEmpty(pba.CurrentBehaviorName))
+            ? $"<color=#FFD060>{pba.CurrentBehaviorName}</color>"
+            : "<color=#888>idle</color>";
+        GUILayout.Label($"<b>{selName}</b>  [{selectedIndex + 1}/{Mathf.Max(1, count)}]  {behaviorLabel}", infoStyle);
 
         if (!string.IsNullOrEmpty(_lastAction))
             GUILayout.Label($"<color=#AAF>{_lastAction}</color>", smallStyle);
 
-        GUILayout.Space(6);
+        GUILayout.Space(5);
 
         // Student selector
         if (count > 1)
@@ -367,7 +489,7 @@ public class BehaviorDemoController : MonoBehaviour
             {
                 var btnStyle = new GUIStyle(GUI.skin.button) { fontStyle = i == selectedIndex ? FontStyle.Bold : FontStyle.Normal };
                 string label = i == selectedIndex ? $"[{i + 1}]" : $" {i + 1} ";
-                if (GUILayout.Button(label, btnStyle, GUILayout.Width(38), GUILayout.Height(24)))
+                if (GUILayout.Button(label, btnStyle, GUILayout.Width(36), GUILayout.Height(24)))
                 {
                     selectedIndex = i;
                     _lastDiag = "";
@@ -379,35 +501,47 @@ public class BehaviorDemoController : MonoBehaviour
             GUILayout.Space(4);
         }
 
-        // Priority 1 — large buttons
+        // ── Row 1: attention-seeking behaviors ──
+        GUILayout.Label("<color=#aef><b>注意力 / 提问</b></color>", smallStyle);
         GUILayout.BeginHorizontal();
-        if (GUILayout.Button("Q  Speak", GUILayout.Height(30)))
-        { _buttonClickCount++; TriggerSpeak(); }
-        if (GUILayout.Button("W  Raise Hand", GUILayout.Height(30)))
-        { _buttonClickCount++; TriggerRaiseHand(); }
-        if (GUILayout.Button("E  Lie Down", GUILayout.Height(30)))
-        { _buttonClickCount++; TriggerLieDown(); }
+        if (GUILayout.Button("Q  说话",  GUILayout.Height(28))) { _buttonClickCount++; TriggerSpeak(); }
+        if (GUILayout.Button("W  举手",  GUILayout.Height(28))) { _buttonClickCount++; TriggerRaiseHand(); }
+        if (GUILayout.Button("A  提问",  GUILayout.Height(28))) { _buttonClickCount++; TriggerAskQuestion(); }
         GUILayout.EndHorizontal();
 
         GUILayout.Space(2);
 
-        // Priority 2 — smaller buttons
+        // ── Row 2: disruptive behaviors ──
+        GUILayout.Label("<color=#fca><b>干扰行为</b></color>", smallStyle);
         GUILayout.BeginHorizontal();
-        if (GUILayout.Button("R Notes")) { _buttonClickCount++; TriggerTakeNotes(); }
-        if (GUILayout.Button("T Desk")) { _buttonClickCount++; TriggerHitDesk(); }
-        if (GUILayout.Button("Y Scream")) { _buttonClickCount++; TriggerScream(); }
-        if (GUILayout.Button("U Push")) { _buttonClickCount++; TriggerPushClassmate(); }
+        if (GUILayout.Button("D  走神",  GUILayout.Height(28))) { _buttonClickCount++; TriggerDistracted(); }
+        if (GUILayout.Button("C  聊天",  GUILayout.Height(28))) { _buttonClickCount++; TriggerTalkToClassmate(); }
+        if (GUILayout.Button("L  离座",  GUILayout.Height(28))) { _buttonClickCount++; TriggerLeaveSeat(); }
         GUILayout.EndHorizontal();
 
         GUILayout.Space(2);
 
+        // ── Row 3: extreme behaviors ──
+        GUILayout.Label("<color=#faa><b>极端行为</b></color>", smallStyle);
         GUILayout.BeginHorizontal();
-        if (GUILayout.Button("S  Stop")) { _buttonClickCount++; StopCurrent(); _lastAction = "Stopped"; }
-        if (GUILayout.Button("X  Stop All")) { _buttonClickCount++; StopAll(); _lastAction = "All stopped"; }
+        if (GUILayout.Button("E  趴桌")) { _buttonClickCount++; TriggerLieDown(); }
+        if (GUILayout.Button("R  记笔记")) { _buttonClickCount++; TriggerTakeNotes(); }
+        if (GUILayout.Button("T  拍桌")) { _buttonClickCount++; TriggerHitDesk(); }
+        if (GUILayout.Button("Y  尖叫")) { _buttonClickCount++; TriggerScream(); }
+        if (GUILayout.Button("U  推人")) { _buttonClickCount++; TriggerPushClassmate(); }
         GUILayout.EndHorizontal();
 
-        GUILayout.Space(6);
-        GUILayout.Label("Tab next | 1-4 select | H help", smallStyle);
+        GUILayout.Space(3);
+
+        // ── Stop ──
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("S  停止当前", GUILayout.Height(26))) { _buttonClickCount++; StopCurrent(); _lastAction = "已停止"; }
+        if (GUILayout.Button("X  全部停止", GUILayout.Height(26))) { _buttonClickCount++; StopAll(); _lastAction = "全部停止"; }
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(5);
+        GUILayout.Label("Tab:下一个 | 1-4:选学生 | H:帮助", smallStyle);
+        GUILayout.Label("右键拖动=视角 | 右键+WASD=移动 | Shift=加速", smallStyle);
 
         if (!string.IsNullOrEmpty(_lastDiag))
             GUILayout.Label($"<color=red>{_lastDiag}</color>", smallStyle);
@@ -415,8 +549,8 @@ public class BehaviorDemoController : MonoBehaviour
         if (count == 0)
         {
             GUILayout.Space(4);
-            GUILayout.Label("<color=red><b>No students found</b></color>", infoStyle);
-            if (GUILayout.Button("Re-discover")) { DiscoverStudents(); if (students.Count > 0) LogStudentInventory(); }
+            GUILayout.Label("<color=red><b>未找到学生</b></color>", infoStyle);
+            if (GUILayout.Button("重新搜索")) { DiscoverStudents(); if (students.Count > 0) LogStudentInventory(); }
         }
 
         GUILayout.EndArea();
@@ -431,18 +565,35 @@ public class BehaviorDemoController : MonoBehaviour
 
     void PrintHelp()
     {
-        Debug.Log(@"[BehaviorDemo] ═══ KEYBOARD CONTROLS (Mac-friendly) ═══
+        Debug.Log(@"[BehaviorDemo] ═══ CONTROLS ═══
   1-4 / Tab    Select student
-  Q            Speak (fallback TTS)
-  W            Raise Hand
-  E            Lie Down / Slump
-  R            Take Notes
-  T            Hit Desk
-  Y            Scream
-  U            Push Classmate
-  S            Stop current student
-  X            Stop ALL students
-  F9           Re-discover students
-  H            Print this help");
+
+  ── Attention / Question ──
+  Q            说话 (Speak)
+  W            举手 (Raise Hand)
+  A            举手提问 (Ask Question)
+
+  ── Disruptive ──
+  D            走神 (Distracted)
+  C            和同学聊天 (Talk to Classmate)
+  L            离座 / 回座位 (Leave / Return to Seat)
+
+  ── Extreme ──
+  E            趴桌 (Lie Down / Slump)
+  R            记笔记 (Take Notes)
+  T            拍桌 (Hit Desk)
+  Y            尖叫 (Scream)
+  U            推同学 (Push Classmate)
+
+  S            Stop current behavior
+  X            Stop ALL
+
+  Right-click + drag   Camera look
+  Right-click + WASD   Camera move
+  Right-click + Q/E    Camera up/down
+  Shift                Camera boost
+
+  F9   Re-discover students
+  H    Print this help");
     }
 }
