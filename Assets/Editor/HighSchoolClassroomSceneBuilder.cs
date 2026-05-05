@@ -13,7 +13,9 @@ public static class HighSchoolClassroomSceneBuilder
     const string SourceScenePath = "Assets/High school classroom/Demo.unity";
     const string TargetScenePath = "Assets/Scenes/HighSchoolClassroom_Demo.unity";
     const string MixamoSittingIdleFbxPath = "Assets/Animation/Mixamo/Sitting Idle.fbx";
+    const string MixamoStudent2SittingFbxPath = "Assets/Animation/Mixamo/Sitting.fbx";
     const string MixamoSittingIdleControllerPath = "Assets/Animation/Ele_student_MixamoSittingIdle.controller";
+    const string MixamoStudent2SittingControllerPath = "Assets/Animation/Ele_student2_MixamoSitting.controller";
     const string FallbackStudentAnimatorControllerPath = "Assets/Animation/Ele_student.controller";
 
     static readonly Vector3 StudentGroupDeskCenter = new Vector3(468.05f, 0.35f, 188.33f);
@@ -75,7 +77,7 @@ public static class HighSchoolClassroomSceneBuilder
     {
         AssetDatabase.Refresh();
         ConvertElementaryStudentMaterialsToUniUnlit();
-        EnsureMixamoSittingIdleController();
+        EnsureMixamoSittingControllers();
         List<GameObject> students = PlaceStudentAvatars();
         EnsureBehaviorDemoSetup();
         EnsurePptProjector();
@@ -207,7 +209,7 @@ public static class HighSchoolClassroomSceneBuilder
             instance.transform.SetParent(parent, true);
             instance.transform.SetPositionAndRotation(seats[i].position, seats[i].rotation);
             instance.transform.localScale = Vector3.one;
-            ConfigureSeatedStudentAnimator(instance);
+            ConfigureSeatedStudentAnimator(instance, i);
             students.Add(instance);
         }
 
@@ -237,9 +239,14 @@ public static class HighSchoolClassroomSceneBuilder
         return Quaternion.LookRotation(direction.normalized, Vector3.up);
     }
 
-    static void ConfigureSeatedStudentAnimator(GameObject student)
+    static void ConfigureSeatedStudentAnimator(GameObject student, int studentIndex)
     {
-        var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(MixamoSittingIdleControllerPath);
+        string controllerPath = studentIndex == 1 ? MixamoStudent2SittingControllerPath : MixamoSittingIdleControllerPath;
+        var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(controllerPath);
+        if (controller == null)
+        {
+            controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(MixamoSittingIdleControllerPath);
+        }
         if (controller == null)
         {
             controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(FallbackStudentAnimatorControllerPath);
@@ -267,40 +274,46 @@ public static class HighSchoolClassroomSceneBuilder
         animator.applyRootMotion = false;
     }
 
-    static void EnsureMixamoSittingIdleController()
+    static void EnsureMixamoSittingControllers()
     {
-        if (!File.Exists(MixamoSittingIdleFbxPath))
+        EnsureMixamoController(MixamoSittingIdleFbxPath, MixamoSittingIdleControllerPath, "Sitting Idle");
+        EnsureMixamoController(MixamoStudent2SittingFbxPath, MixamoStudent2SittingControllerPath, "Sitting");
+    }
+
+    static void EnsureMixamoController(string fbxPath, string controllerPath, string stateName)
+    {
+        if (!File.Exists(fbxPath))
         {
-            Debug.LogWarning($"Mixamo sitting idle FBX not found: {MixamoSittingIdleFbxPath}. Falling back to {FallbackStudentAnimatorControllerPath}.");
+            Debug.LogWarning($"Mixamo sitting FBX not found: {fbxPath}. Falling back to {FallbackStudentAnimatorControllerPath}.");
             return;
         }
 
-        ConfigureMixamoModelImporter();
+        ConfigureMixamoModelImporter(fbxPath, stateName);
 
-        AnimationClip clip = AssetDatabase.LoadAllAssetRepresentationsAtPath(MixamoSittingIdleFbxPath)
+        AnimationClip clip = AssetDatabase.LoadAllAssetRepresentationsAtPath(fbxPath)
             .OfType<AnimationClip>()
             .FirstOrDefault(c => !c.name.StartsWith("__preview__", System.StringComparison.OrdinalIgnoreCase));
 
         if (clip == null)
         {
-            Debug.LogWarning($"No animation clip found in {MixamoSittingIdleFbxPath}. Falling back to {FallbackStudentAnimatorControllerPath}.");
+            Debug.LogWarning($"No animation clip found in {fbxPath}. Falling back to {FallbackStudentAnimatorControllerPath}.");
             return;
         }
 
-        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(MixamoSittingIdleControllerPath);
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
         if (controller == null)
         {
-            controller = AnimatorController.CreateAnimatorControllerAtPath(MixamoSittingIdleControllerPath);
+            controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
         }
 
         AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
         AnimatorState state = stateMachine.states
             .Select(child => child.state)
-            .FirstOrDefault(s => s.name == "Sitting Idle");
+            .FirstOrDefault(s => s.name == stateName);
 
         if (state == null)
         {
-            state = stateMachine.AddState("Sitting Idle");
+            state = stateMachine.AddState(stateName);
         }
 
         state.motion = clip;
@@ -312,12 +325,12 @@ public static class HighSchoolClassroomSceneBuilder
         AssetDatabase.SaveAssets();
     }
 
-    static void ConfigureMixamoModelImporter()
+    static void ConfigureMixamoModelImporter(string fbxPath, string clipName)
     {
-        var importer = AssetImporter.GetAtPath(MixamoSittingIdleFbxPath) as ModelImporter;
+        var importer = AssetImporter.GetAtPath(fbxPath) as ModelImporter;
         if (importer == null)
         {
-            Debug.LogWarning($"ModelImporter not found for {MixamoSittingIdleFbxPath}.");
+            Debug.LogWarning($"ModelImporter not found for {fbxPath}.");
             return;
         }
 
@@ -351,7 +364,7 @@ public static class HighSchoolClassroomSceneBuilder
         {
             for (int i = 0; i < clips.Length; i++)
             {
-                clips[i].name = "Sitting Idle";
+                clips[i].name = clipName;
                 clips[i].loopTime = true;
                 clips[i].loopPose = true;
                 clips[i].lockRootRotation = true;
