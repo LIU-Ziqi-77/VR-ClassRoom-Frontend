@@ -1,21 +1,33 @@
 # AGENTS.md
 
 ## Project context
-This is a Unity-based VR Classroom research prototype for simulating multiple AI-driven student agents in a virtual classroom.
 
-The system prioritizes:
+This is a Unity-based VR Classroom research prototype for teacher training.
+
+The intended user is a novice or early-career teacher who enters a simulated classroom through a VR headset. In this virtual classroom, the teacher can practice teaching, classroom management, and responding to student behaviors without affecting real students.
+
+The classroom contains multiple virtual student agents. These agents are intended to simulate classroom-relevant behaviors such as:
+- paying attention
+- raising hands
+- asking questions
+- showing confusion
+- getting distracted
+- side-talking
+- leaving their seats
+- reacting to the teacher's instruction
+
+The long-term vision is that each virtual student can be controlled or influenced by an AI/LLM-based agent. The teacher's speech may eventually be captured through speech-to-text and used as context for student-agent behavior generation. However, do not assume the full LLM backend, real-time speech-to-text pipeline, or complete multi-agent reasoning system is implemented unless explicitly requested.
+
+The current development focus is on the Unity front end and research-demo reliability:
 - stable VR interaction
-- visible and interpretable student behaviors
-- incremental development
-- research-demo reliability
-
-Current focus:
-- front-end behavior presentation
+- believable and interpretable student behaviors
+- visible animation and behavior presentation
 - Unity scene stability
 - student animation/behavior control
-- basic agent behavior simulation
+- mock, scripted, or rule-based agent behavior simulation
+- desktop and VR testing workflows
 
-Do not assume the LLM backend must be fully implemented unless explicitly requested.
+This is a research prototype, not a production VR training product. Prioritize small, reliable, demonstrable behavior slices over broad architectural rewrites. It is acceptable to use mock data, scripted triggers, keyboard controls, inspector buttons, or simple rule-based behavior logic when testing front-end behavior.
 
 ## Communication style
 - Be objective, rigorous, and critical.
