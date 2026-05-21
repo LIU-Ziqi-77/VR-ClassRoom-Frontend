@@ -1,6 +1,8 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 
 /// <summary>
 /// Procedural bone-based animation system for student avatar behaviors.
@@ -20,6 +22,9 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
     private Coroutine _activeBehavior;
     private bool _behaviorActive;
+    private PlayableGraph _clipGraph;
+    private bool _clipChangedRootMotion;
+    private bool _savedApplyRootMotion;
 
     /// <summary>Human-readable name of the currently running behavior ("" when idle).</summary>
     public string CurrentBehaviorName { get; private set; } = "";
@@ -64,6 +69,11 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             var testBone = animator.GetBoneTransform(HumanBodyBones.Head);
             Debug.Log($"[PBA] {gameObject.name}: Humanoid Animator OK. Head bone = {(testBone != null ? testBone.name : "NULL")}");
         }
+    }
+
+    void OnDisable()
+    {
+        StopAnimationClipGraph();
     }
 
     Animator FindHumanoidAnimator()
@@ -143,6 +153,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             StopCoroutine(_activeBehavior);
             _activeBehavior = null;
         }
+        StopAnimationClipGraph();
         _behaviorActive = false;
         CurrentBehaviorName = "";
         StartCoroutine(FadeOutOverrides(0.4f));
@@ -241,6 +252,28 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         StartBehavior(ListenToClassmateRoutine(speaker, duration));
     }
 
+    public void PlayAnimationClip(AnimationClip clip, float duration, string behaviorName)
+    {
+        PlayUpperBodyAnimationClip(clip, duration, behaviorName, 0.35f, 0.45f, 1f);
+    }
+
+    public void PlayUpperBodyAnimationClip(
+        AnimationClip clip,
+        float duration,
+        string behaviorName,
+        float blendInSeconds,
+        float blendOutSeconds,
+        float playbackSpeed)
+    {
+        if (clip == null)
+        {
+            Debug.LogWarning($"[PBA] {gameObject.name}: PlayAnimationClip skipped — clip is null.");
+            return;
+        }
+
+        StartClipBehavior(clip, duration, behaviorName, blendInSeconds, blendOutSeconds, playbackSpeed);
+    }
+
     // ─── Internal ────────────────────────────────────────────
 
     void StartBehavior(IEnumerator routine, string behaviorName = "")
@@ -252,10 +285,47 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         }
         if (_activeBehavior != null)
             StopCoroutine(_activeBehavior);
+        StopAnimationClipGraph();
         ClearOverrides();
         _behaviorActive = true;
         _activeBehavior = StartCoroutine(WrapBehavior(routine));
         Debug.Log($"[PBA] {gameObject.name}: Behavior started (restPose captured={_restPoseCaptured})");
+    }
+
+    void StartClipBehavior(
+        AnimationClip clip,
+        float duration,
+        string behaviorName,
+        float blendInSeconds,
+        float blendOutSeconds,
+        float playbackSpeed)
+    {
+        if (animator == null || !animator.isHuman)
+        {
+            Debug.LogWarning($"[PBA] {gameObject.name}: PlayAnimationClip skipped — no humanoid Animator");
+            return;
+        }
+
+        if (animator.runtimeAnimatorController == null)
+        {
+            Debug.LogWarning($"[PBA] {gameObject.name}: PlayAnimationClip skipped — no base AnimatorController to blend with.");
+            return;
+        }
+
+        if (_activeBehavior != null)
+            StopCoroutine(_activeBehavior);
+
+        StopAnimationClipGraph();
+        ClearOverrides();
+        _behaviorActive = true;
+        CurrentBehaviorName = behaviorName;
+        _activeBehavior = StartCoroutine(AnimationClipRoutine(
+            clip,
+            Mathf.Max(0.1f, duration),
+            behaviorName,
+            Mathf.Max(0.01f, blendInSeconds),
+            Mathf.Max(0.01f, blendOutSeconds),
+            Mathf.Max(0.1f, playbackSpeed)));
     }
 
     IEnumerator WrapBehavior(IEnumerator inner)
@@ -287,6 +357,94 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         }
 
         ClearOverrides();
+    }
+
+    IEnumerator AnimationClipRoutine(
+        AnimationClip clip,
+        float duration,
+        string behaviorName,
+        float blendInSeconds,
+        float blendOutSeconds,
+        float playbackSpeed)
+    {
+        _savedApplyRootMotion = animator.applyRootMotion;
+        _clipChangedRootMotion = true;
+        animator.applyRootMotion = false;
+
+        _clipGraph = PlayableGraph.Create($"{gameObject.name}_{behaviorName}");
+        _clipGraph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
+
+        AnimatorControllerPlayable basePlayable = AnimatorControllerPlayable.Create(_clipGraph, animator.runtimeAnimatorController);
+        AnimationClipPlayable clipPlayable = AnimationClipPlayable.Create(_clipGraph, clip);
+        clipPlayable.SetApplyFootIK(false);
+        clipPlayable.SetApplyPlayableIK(false);
+        clipPlayable.SetSpeed(playbackSpeed);
+
+        AnimationLayerMixerPlayable layerMixer = AnimationLayerMixerPlayable.Create(_clipGraph, 2);
+        layerMixer.SetLayerMaskFromAvatarMask(1, CreateUpperBodyAvatarMask());
+        layerMixer.SetInputWeight(0, 1f);
+        layerMixer.SetInputWeight(1, 0f);
+
+        _clipGraph.Connect(basePlayable, 0, layerMixer, 0);
+        _clipGraph.Connect(clipPlayable, 0, layerMixer, 1);
+
+        AnimationPlayableOutput output = AnimationPlayableOutput.Create(_clipGraph, "DTT Behavior Clip", animator);
+        output.SetSourcePlayable(layerMixer);
+        _clipGraph.Play();
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            float inWeight = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / blendInSeconds));
+            float outWeight = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((duration - elapsed) / blendOutSeconds));
+            layerMixer.SetInputWeight(1, Mathf.Min(inWeight, outWeight));
+
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (_clipGraph.IsValid())
+        {
+            layerMixer.SetInputWeight(1, 0f);
+        }
+        StopAnimationClipGraph();
+        _behaviorActive = false;
+        _activeBehavior = null;
+        CurrentBehaviorName = "";
+    }
+
+    AvatarMask CreateUpperBodyAvatarMask()
+    {
+        AvatarMask mask = new AvatarMask();
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.Root, false);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.Body, true);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.Head, true);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftLeg, false);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.RightLeg, false);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm, true);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm, true);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers, true);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFingers, true);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFootIK, false);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFootIK, false);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftHandIK, false);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.RightHandIK, false);
+        return mask;
+    }
+
+    void StopAnimationClipGraph()
+    {
+        if (_clipGraph.IsValid())
+        {
+            _clipGraph.Destroy();
+        }
+
+        if (_clipChangedRootMotion && animator != null)
+        {
+            animator.applyRootMotion = _savedApplyRootMotion;
+        }
+
+        _clipChangedRootMotion = false;
     }
 
     /// Smoothly transitions a set of bones from rest to target over `seconds`

@@ -21,7 +21,7 @@ public class StudentBehaviorVisuals : MonoBehaviour
     public string displayName = "";
 
     [Tooltip("World-space height offset above the avatar root for the label.")]
-    public float labelHeightOffset = 2.2f;
+    public float labelHeightOffset = 1.9f;
 
     [Header("Colors")]
     public Color idleColor      = new Color(0.85f, 0.85f, 0.85f, 0.7f);
@@ -80,7 +80,7 @@ public class StudentBehaviorVisuals : MonoBehaviour
         float sx = screenPos.x;
         float sy = Screen.height - screenPos.y;
 
-        bool isSelected = IsSelected();
+        bool isSelected = IsBehaviorDemoSelected() || IsDTTSelected();
         bool hasBehavior = _pba != null && _pba.IsBehaviorActive;
         string behaviorName = _pba != null ? _pba.CurrentBehaviorName : "";
 
@@ -88,7 +88,7 @@ public class StudentBehaviorVisuals : MonoBehaviour
         if (isSelected)
         {
             _arrowStyle.normal.textColor = selectedColor;
-            float arrowY = sy - 28f;
+            float arrowY = sy - 24f;
             GUI.Label(new Rect(sx - 20f, arrowY, 40f, 24f), "▼", _arrowStyle);
         }
 
@@ -111,13 +111,24 @@ public class StudentBehaviorVisuals : MonoBehaviour
 
     // ─── Helpers ─────────────────────────────────────────────
 
-    bool IsSelected()
+    bool IsBehaviorDemoSelected()
     {
         if (_demo == null) return false;
         var students = _demo.students;
         if (students == null || students.Count == 0) return false;
         int idx = Mathf.Clamp(_demo.SelectedIndex, 0, students.Count - 1);
         return students[idx] != null && students[idx].gameObject == gameObject;
+    }
+
+    bool IsDTTSelected()
+    {
+        DTTTeachingAidManager manager = DTTTeachingAidManager.Instance;
+        if (manager == null || manager.selectedStudent == null) return false;
+
+        Transform selected = manager.selectedStudent.transform;
+        return selected == transform
+            || selected.IsChildOf(transform)
+            || transform.IsChildOf(selected);
     }
 
     Color BehaviorTagColor(string name)

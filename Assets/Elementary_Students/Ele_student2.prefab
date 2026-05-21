@@ -2669,6 +2669,7 @@ GameObject:
   - component: {fileID: 571919132684313043}
   - component: {fileID: 5399990783543911326}
   - component: {fileID: 6053955941500020283}
+  - component: {fileID: 8735731451894434484}
   m_Layer: 0
   m_Name: Ele_student2
   m_TagString: Untagged
@@ -3077,6 +3078,22 @@ MonoBehaviour:
   deadZonePitch: 3
   maxSourceYaw: 70
   maxSourcePitch: 35
+--- !u!114 &8735731451894434484
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4295875152558356564}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 87640c3c3e6f14c8496975fd0029e0e3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  isSelected: 0
+  arrowHeightOffset: 2.05
+  arrowColor: {r: 0.2, g: 1, b: 0.25, a: 1}
+  arrowText: "\u25BC"
 --- !u!1 &4353415765547627450
 GameObject:
   m_ObjectHideFlags: 0

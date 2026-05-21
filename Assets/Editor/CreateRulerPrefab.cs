@@ -249,11 +249,10 @@ public static class CreateRulerPrefab
             name = "Ruler"
         };
 
-        Color rulerColor = new Color(1f, 0.86f, 0.28f, 1f);
-        if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", null);
-        if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", null);
-        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", rulerColor);
-        if (material.HasProperty("_Color")) material.SetColor("_Color", rulerColor);
+        if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
+        if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);
+        if (material.HasProperty("_Color")) material.SetColor("_Color", Color.white);
         if (material.HasProperty("_ReceiveShadows")) material.SetFloat("_ReceiveShadows", 0f);
         if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.08f);
         if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.08f);

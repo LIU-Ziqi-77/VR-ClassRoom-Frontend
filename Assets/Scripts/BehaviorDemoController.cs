@@ -15,6 +15,7 @@ using VRM;
 ///   Q          Speak
 ///   W          Raise Hand
 ///   A          Ask Question (hand up + lean forward)
+///   P          Clap hands
 ///   E          Lie Down / Slump
 ///   D          Distracted (look away + slouch)
 ///   C          Talk to Nearby Classmate
@@ -56,6 +57,14 @@ public class BehaviorDemoController : MonoBehaviour
     public float hitDeskDuration    = 3f;
     public float pushDuration       = 2f;
     public float lieDownDuration    = 8f;
+    public float clapDuration       = 3f;
+    public float clapBlendIn        = 0.35f;
+    public float clapBlendOut       = 0.45f;
+    public Vector2 clapSpeedRange   = new Vector2(0.92f, 1.08f);
+    public Vector2 clapDurationJitter = new Vector2(-0.25f, 0.2f);
+
+    [Header("Imported Behavior Clips")]
+    public AnimationClip clappingClip;
 
     [Tooltip("How far from the seat the student walks when leaving (world units).")]
     public float leaveSeatDistance = 2.5f;
@@ -174,20 +183,19 @@ public class BehaviorDemoController : MonoBehaviour
         {
             if (Input.GetKeyDown(KeyCode.Alpha1 + i))
             {
-                selectedIndex = i;
-                Log($"Selected [{i}]: {CurrentName}");
+                SelectStudentIndex(i);
             }
         }
 
         if (Input.GetKeyDown(KeyCode.Tab))
         {
-            selectedIndex = (selectedIndex + 1) % students.Count;
-            Log($"Tab → [{selectedIndex}]: {CurrentName}");
+            SelectStudentIndex((selectedIndex + 1) % students.Count);
         }
 
         if (Input.GetKeyDown(KeyCode.Q)) DoTrigger("Speak",           TriggerSpeak);
         if (Input.GetKeyDown(KeyCode.W)) DoTrigger("RaiseHand",       TriggerRaiseHand);
         if (Input.GetKeyDown(KeyCode.A)) DoTrigger("AskQuestion",     TriggerAskQuestion);
+        if (Input.GetKeyDown(KeyCode.P)) DoTrigger("Clap",            TriggerClap);
         if (Input.GetKeyDown(KeyCode.E)) DoTrigger("LieDown",         TriggerLieDown);
         if (Input.GetKeyDown(KeyCode.D)) DoTrigger("Distracted",      TriggerDistracted);
         if (Input.GetKeyDown(KeyCode.C)) DoTrigger("TalkClassmate",   TriggerTalkToClassmate);
@@ -215,6 +223,45 @@ public class BehaviorDemoController : MonoBehaviour
     }
 
     string CurrentName => CurrentPBA != null ? CurrentPBA.gameObject.name : "(none)";
+
+    public void SelectStudentIndex(int index, bool syncDTTSelection = true)
+    {
+        if (students == null || students.Count == 0) return;
+
+        int clampedIndex = Mathf.Clamp(index, 0, students.Count - 1);
+        bool changed = selectedIndex != clampedIndex;
+        selectedIndex = clampedIndex;
+        _lastDiag = "";
+        _lastAction = "";
+        if (changed || syncDTTSelection)
+        {
+            Log($"Selected [{selectedIndex}]: {CurrentName}");
+        }
+
+        if (syncDTTSelection && CurrentPBA != null)
+        {
+            DTTChildGazeSimulator.SelectChildByGameObject(CurrentPBA.gameObject);
+        }
+    }
+
+    public void SelectStudentByGameObject(GameObject studentRoot, bool syncDTTSelection = true)
+    {
+        if (studentRoot == null || students == null || students.Count == 0) return;
+
+        for (int i = 0; i < students.Count; i++)
+        {
+            ProceduralBehaviorAnimator student = students[i];
+            if (student == null) continue;
+
+            if (student.gameObject == studentRoot
+                || studentRoot.transform.IsChildOf(student.transform)
+                || student.transform.IsChildOf(studentRoot.transform))
+            {
+                SelectStudentIndex(i, syncDTTSelection);
+                return;
+            }
+        }
+    }
 
     // ─── Trigger Wrapper ─────────────────────────────────────
 
@@ -279,6 +326,19 @@ public class BehaviorDemoController : MonoBehaviour
             };
             speech.SpeakWithoutMotion(questionTexts[Random.Range(0, questionTexts.Length)], askQuestionDuration * 0.5f);
         }
+    }
+
+    public void TriggerClap()
+    {
+        var pba = CurrentPBA;
+        if (pba == null) { _lastDiag = "Clap failed: no selected student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
+        if (clappingClip == null) { _lastDiag = "Clap failed: clappingClip not assigned"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
+
+        float duration = Mathf.Max(1f, clapDuration + Random.Range(clapDurationJitter.x, clapDurationJitter.y));
+        float speed = Random.Range(clapSpeedRange.x, clapSpeedRange.y);
+        pba.PlayUpperBodyAnimationClip(clappingClip, duration, "拍手", clapBlendIn, clapBlendOut, speed);
+        _lastAction = "拍手";
+        Log($"Clap ({duration:F1}s, speed {speed:F2}x)");
     }
 
     public void TriggerDistracted()
@@ -491,10 +551,7 @@ public class BehaviorDemoController : MonoBehaviour
                 string label = i == selectedIndex ? $"[{i + 1}]" : $" {i + 1} ";
                 if (GUILayout.Button(label, btnStyle, GUILayout.Width(36), GUILayout.Height(24)))
                 {
-                    selectedIndex = i;
-                    _lastDiag = "";
-                    _lastAction = "";
-                    Log($"Selected [{i}]: {CurrentName}");
+                    SelectStudentIndex(i);
                 }
             }
             GUILayout.EndHorizontal();
@@ -507,6 +564,7 @@ public class BehaviorDemoController : MonoBehaviour
         if (GUILayout.Button("Q  说话",  GUILayout.Height(28))) { _buttonClickCount++; TriggerSpeak(); }
         if (GUILayout.Button("W  举手",  GUILayout.Height(28))) { _buttonClickCount++; TriggerRaiseHand(); }
         if (GUILayout.Button("A  提问",  GUILayout.Height(28))) { _buttonClickCount++; TriggerAskQuestion(); }
+        if (GUILayout.Button("P  拍手",  GUILayout.Height(28))) { _buttonClickCount++; TriggerClap(); }
         GUILayout.EndHorizontal();
 
         GUILayout.Space(2);
@@ -572,6 +630,7 @@ public class BehaviorDemoController : MonoBehaviour
   Q            说话 (Speak)
   W            举手 (Raise Hand)
   A            举手提问 (Ask Question)
+  P            拍手 3 秒 (Clap)
 
   ── Disruptive ──
   D            走神 (Distracted)

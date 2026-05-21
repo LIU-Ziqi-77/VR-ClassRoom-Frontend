@@ -23,6 +23,7 @@ public class BehaviorDemoSetup : MonoBehaviour
     public bool includeInactive = false;
     public bool disableOldTestControllers = true;
     public bool randomizePitch = true;
+    public AnimationClip clappingClip;
 
     [Header("Avatar Appearance")]
     [Tooltip("Replace flower-head avatars with clones of good-looking ones at runtime")]
@@ -110,6 +111,10 @@ public class BehaviorDemoSetup : MonoBehaviour
         if (demo == null)
             demo = gameObject.AddComponent<BehaviorDemoController>();
         demo.students = students;
+        if (clappingClip != null)
+        {
+            demo.clappingClip = clappingClip;
+        }
         Debug.Log($"[BehaviorDemoSetup] Step 3: {students.Count} students assigned to controller");
 
         // Step 4: Disable old controllers

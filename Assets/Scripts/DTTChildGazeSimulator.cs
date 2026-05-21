@@ -220,10 +220,34 @@ public class DTTChildGazeSimulator : MonoBehaviour
             : null;
 
         selectedChildIndex = clampedIndex;
+        DTTChildGazeSimulator selected = RegisteredSimulators[selectedChildIndex];
 
-        if (previous != null && previous != RegisteredSimulators[selectedChildIndex] && previous.returnDeselectedChildToIdle)
+        if (DTTTeachingAidManager.Instance != null)
+        {
+            DTTTeachingAidManager.Instance.SelectStudentForGazeSimulator(selected);
+        }
+
+        if (previous != null && previous != selected && previous.returnDeselectedChildToIdle)
         {
             previous.SetPhase(DTTGazePhase.TrialIdle);
+        }
+    }
+
+    public static void SelectChildByGameObject(GameObject childRoot)
+    {
+        if (childRoot == null) return;
+
+        RefreshRegisteredOrder();
+        for (int i = 0; i < RegisteredSimulators.Count; i++)
+        {
+            DTTChildGazeSimulator simulator = RegisteredSimulators[i];
+            if (simulator == null) continue;
+
+            if (simulator.gameObject == childRoot || childRoot.transform.IsChildOf(simulator.transform) || simulator.transform.IsChildOf(childRoot.transform))
+            {
+                SelectChild(i);
+                return;
+            }
         }
     }
 
@@ -485,7 +509,10 @@ public class DTTChildGazeSimulator : MonoBehaviour
             case DTTGazeTarget.TeacherHands:
                 return teacherHandsTarget;
             case DTTGazeTarget.TeachingStimulus:
-                return teachingStimulusTarget;
+                Transform currentAidTarget = DTTTeachingAidManager.Instance != null
+                    ? DTTTeachingAidManager.Instance.GetCurrentTeachingStimulusTarget()
+                    : null;
+                return currentAidTarget != null ? currentAidTarget : teachingStimulusTarget;
             case DTTGazeTarget.Desk:
                 return deskTarget;
             case DTTGazeTarget.Reinforcer:
