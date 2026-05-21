@@ -7,6 +7,7 @@ public class EyeController : MonoBehaviour
     [Header("VRM Components")]
     public Animator humanoidAnimator;
     public VRMBlendShapeProxy blendShapeProxy;
+    public VRMLookAtHead vrmLookAtHead;
     
     [Header("Eye Bones")]
     public Transform leftEyeBone;
@@ -17,7 +18,15 @@ public class EyeController : MonoBehaviour
     public float maxLookAngle = 30f;
     public float blinkInterval = 3f;
     public float blinkDuration = 0.1f;
-    
+
+    [Header("Natural Gaze Settings")]
+    public bool enableNaturalGaze = true;
+    [Tooltip("Adds small target offsets so the character does not stare at one exact point.")]
+    public float targetJitterRadius = 0.08f;
+    [Tooltip("How often the eyes pick a slightly different point near the current target.")]
+    public Vector2 microSaccadeIntervalRange = new Vector2(0.8f, 2.2f);
+    [Tooltip("Randomized blink interval range. Overrides the fixed Blink Interval when enabled.")]
+    public Vector2 blinkIntervalRange = new Vector2(2.2f, 6f);
     [Header("BlendShape Names")]
     public string lookUpBlendShapeName = "LookUp";
     public string lookDownBlendShapeName = "LookDown";
@@ -34,6 +43,10 @@ public class EyeController : MonoBehaviour
     private Vector3 originalRightEyeRotation;
     private bool isBlinking = false;
     private float lastBlinkTime;
+    private float nextBlinkTime;
+    private float nextMicroSaccadeTime;
+    private Vector3 currentTargetOffset;
+    private Transform vrmLookAtRuntimeTarget;
     
     void Start()
     {
@@ -45,7 +58,7 @@ public class EyeController : MonoBehaviour
         HandleBlinking();
         UpdateEyeDirection();
     }
-    
+
     private void InitializeEyeController()
     {
         if (humanoidAnimator == null)
@@ -57,6 +70,11 @@ public class EyeController : MonoBehaviour
         {
             blendShapeProxy = GetComponent<VRMBlendShapeProxy>();
         }
+
+        if (vrmLookAtHead == null)
+        {
+            vrmLookAtHead = GetComponent<VRMLookAtHead>();
+        }
         
         if (leftEyeBone == null && humanoidAnimator != null && humanoidAnimator.isHuman)
         {
@@ -67,7 +85,7 @@ public class EyeController : MonoBehaviour
         {
             rightEyeBone = humanoidAnimator.GetBoneTransform(HumanBodyBones.RightEye);
         }
-        
+
         // 保存原始眼球旋转
         if (leftEyeBone != null)
         {
@@ -78,15 +96,17 @@ public class EyeController : MonoBehaviour
         {
             originalRightEyeRotation = rightEyeBone.localEulerAngles;
         }
-        
+
         lastBlinkTime = Time.time;
+        ScheduleNextBlink();
+        ScheduleNextMicroSaccade();
     }
     
     private void HandleBlinking()
     {
         if (isBlinking) return;
         
-        if (Time.time - lastBlinkTime > blinkInterval)
+        if (Time.time >= nextBlinkTime)
         {
             StartCoroutine(Blink());
         }
@@ -110,33 +130,48 @@ public class EyeController : MonoBehaviour
         
         isBlinking = false;
         lastBlinkTime = Time.time;
+        ScheduleNextBlink();
     }
     
     private void UpdateEyeDirection()
     {
-        if (currentTarget == null && !useTargetTransform) return;
+        if (useTargetTransform && currentTarget == null) return;
         
         Vector3 targetPos = useTargetTransform ? currentTarget.position : targetPosition;
-        LookAtTarget(targetPos);
+        ApplyLookAtTarget(targetPos);
     }
     
     public void LookAtTarget(Vector3 targetPosition)
     {
         this.targetPosition = targetPosition;
         useTargetTransform = false;
-        
-        if (leftEyeBone == null || rightEyeBone == null) return;
-        
-        // 计算眼球旋转
-        Vector3 leftEyeDirection = CalculateEyeDirection(leftEyeBone.position, targetPosition);
-        Vector3 rightEyeDirection = CalculateEyeDirection(rightEyeBone.position, targetPosition);
-        
-        // 应用眼球旋转
-        ApplyEyeRotation(leftEyeBone, leftEyeDirection);
-        ApplyEyeRotation(rightEyeBone, rightEyeDirection);
-        
-        // 同时更新BlendShape（如果可用）
-        UpdateBlendShapeLookDirection(targetPosition);
+
+        ApplyLookAtTarget(targetPosition);
+    }
+
+    private void ApplyLookAtTarget(Vector3 targetPosition)
+    {
+        Vector3 adjustedTarget = GetNaturalTargetPosition(targetPosition);
+
+        bool usedVrmLookAt = ApplyVrmLookAt(adjustedTarget);
+
+        if (!usedVrmLookAt && leftEyeBone != null)
+        {
+            Vector3 leftEyeDirection = CalculateEyeDirection(leftEyeBone.position, adjustedTarget);
+            ApplyEyeRotation(leftEyeBone, leftEyeDirection);
+        }
+
+        if (!usedVrmLookAt && rightEyeBone != null)
+        {
+            Vector3 rightEyeDirection = CalculateEyeDirection(rightEyeBone.position, adjustedTarget);
+            ApplyEyeRotation(rightEyeBone, rightEyeDirection);
+        }
+
+        if (!usedVrmLookAt)
+        {
+            // 同时更新BlendShape（如果可用）
+            UpdateBlendShapeLookDirection(adjustedTarget);
+        }
     }
     
     public void LookAtTransform(Transform target)
@@ -169,6 +204,11 @@ public class EyeController : MonoBehaviour
     {
         LookAtTarget(position);
     }
+
+    public void RefreshLookAtNow()
+    {
+        UpdateEyeDirection();
+    }
     
     public void ResetEyeDirection()
     {
@@ -181,7 +221,7 @@ public class EyeController : MonoBehaviour
         {
             rightEyeBone.localEulerAngles = originalRightEyeRotation;
         }
-        
+
         // 重置BlendShape
         if (blendShapeProxy != null)
         {
@@ -192,7 +232,7 @@ public class EyeController : MonoBehaviour
         }
         
         currentTarget = null;
-        useTargetTransform = false;
+        useTargetTransform = true;
     }
     
     private Vector3 CalculateEyeDirection(Vector3 eyePosition, Vector3 targetPosition)
@@ -209,6 +249,44 @@ public class EyeController : MonoBehaviour
         
         return direction;
     }
+
+    private Vector3 GetNaturalTargetPosition(Vector3 baseTargetPosition)
+    {
+        if (!enableNaturalGaze || targetJitterRadius <= 0f)
+        {
+            return baseTargetPosition;
+        }
+
+        if (Time.time >= nextMicroSaccadeTime)
+        {
+            currentTargetOffset = Random.insideUnitSphere * targetJitterRadius;
+            currentTargetOffset.y *= 0.65f;
+            ScheduleNextMicroSaccade();
+        }
+
+        return baseTargetPosition + currentTargetOffset;
+    }
+
+    private void ScheduleNextMicroSaccade()
+    {
+        float min = Mathf.Max(0.05f, microSaccadeIntervalRange.x);
+        float max = Mathf.Max(min, microSaccadeIntervalRange.y);
+        nextMicroSaccadeTime = Time.time + Random.Range(min, max);
+    }
+
+    private void ScheduleNextBlink()
+    {
+        if (enableNaturalGaze)
+        {
+            float min = Mathf.Max(0.2f, blinkIntervalRange.x);
+            float max = Mathf.Max(min, blinkIntervalRange.y);
+            nextBlinkTime = Time.time + Random.Range(min, max);
+        }
+        else
+        {
+            nextBlinkTime = Time.time + Mathf.Max(0.2f, blinkInterval);
+        }
+    }
     
     private void ApplyEyeRotation(Transform eyeBone, Vector3 direction)
     {
@@ -220,6 +298,32 @@ public class EyeController : MonoBehaviour
         // 平滑旋转
         eyeBone.rotation = Quaternion.Slerp(eyeBone.rotation, targetRotation, 
             lookSpeed * Time.deltaTime);
+    }
+
+    private bool ApplyVrmLookAt(Vector3 targetPosition)
+    {
+        if (vrmLookAtHead == null || vrmLookAtHead.Head == null)
+        {
+            return false;
+        }
+
+        EnsureVrmLookAtRuntimeTarget();
+        vrmLookAtRuntimeTarget.position = targetPosition;
+        vrmLookAtHead.Target = vrmLookAtRuntimeTarget;
+
+        float yaw;
+        float pitch;
+        vrmLookAtHead.LookWorldPosition(targetPosition, out yaw, out pitch);
+        return true;
+    }
+
+    private void EnsureVrmLookAtRuntimeTarget()
+    {
+        if (vrmLookAtRuntimeTarget != null) return;
+
+        GameObject target = new GameObject($"{name}_DTTLookAtTarget");
+        target.hideFlags = HideFlags.HideInHierarchy;
+        vrmLookAtRuntimeTarget = target.transform;
     }
     
     private void UpdateBlendShapeLookDirection(Vector3 targetPosition)
@@ -280,6 +384,8 @@ public class EyeController : MonoBehaviour
     public void SetBlinkInterval(float interval)
     {
         blinkInterval = interval;
+        blinkIntervalRange = new Vector2(interval, interval);
+        ScheduleNextBlink();
     }
     
     public void SetLookSpeed(float speed)

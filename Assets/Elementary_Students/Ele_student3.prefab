@@ -1837,6 +1837,9 @@ GameObject:
   - component: {fileID: 1136263346835521554}
   - component: {fileID: 6965800757976010112}
   - component: {fileID: 2461466468362918897}
+  - component: {fileID: 2044120572536909725}
+  - component: {fileID: 4574527688165934513}
+  - component: {fileID: 8436758304425776484}
   m_Layer: 0
   m_Name: Ele_student3
   m_TagString: Untagged
@@ -2124,6 +2127,127 @@ MonoBehaviour:
       m_RotationOrder: 4
     CurveXRangeDegree: 90
     CurveYRangeDegree: 10
+--- !u!114 &2044120572536909725
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2867422110698743247}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b763113d617a94391ba1396ebbe1e98e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  humanoidAnimator: {fileID: 724965152764049669}
+  blendShapeProxy: {fileID: 7015697475814183318}
+  vrmLookAtHead: {fileID: 6965800757976010112}
+  leftEyeBone: {fileID: 0}
+  rightEyeBone: {fileID: 0}
+  lookSpeed: 5
+  maxLookAngle: 30
+  blinkInterval: 3
+  blinkDuration: 0.1
+  enableNaturalGaze: 1
+  targetJitterRadius: 0.08
+  microSaccadeIntervalRange: {x: 0.8, y: 2.2}
+  blinkIntervalRange: {x: 2.2, y: 6}
+  lookUpBlendShapeName: LookUp
+  lookDownBlendShapeName: LookDown
+  lookLeftBlendShapeName: LookLeft
+  lookRightBlendShapeName: LookRight
+  blinkBlendShapeName: Blink
+  currentTarget: {fileID: 0}
+  targetPosition: {x: 0, y: 0, z: 0}
+  useTargetTransform: 1
+--- !u!114 &4574527688165934513
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2867422110698743247}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f6ceeb7e9badc43c395c7a1095d5fdee, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  eyeController: {fileID: 2044120572536909725}
+  teacherFaceTarget: {fileID: 0}
+  teacherHandsTarget: {fileID: 0}
+  teachingStimulusTarget: {fileID: 0}
+  deskTarget: {fileID: 0}
+  reinforcerTarget: {fileID: 0}
+  leftDistractorTarget: {fileID: 0}
+  rightDistractorTarget: {fileID: 0}
+  groundTarget: {fileID: 0}
+  useMainCameraAsTeacher: 1
+  teacherCameraOverride: {fileID: 0}
+  teacherHandsCameraOffset: {x: 0, y: -0.45, z: 0.45}
+  stimulusCameraOffset: {x: 0, y: -0.35, z: 0.75}
+  reinforcerCameraOffset: {x: 0.25, y: -0.25, z: 0.65}
+  simulateOnStart: 1
+  keyboardTesting: 1
+  logKeyboardPhaseChanges: 1
+  keyboardControlsOnlySelectedChild: 1
+  returnDeselectedChildToIdle: 1
+  currentPhase: 0
+  gazeHoldDurationRange: {x: 1.1, y: 2.8}
+  offTaskGazeHoldDurationRange: {x: 0.75, y: 1.8}
+  responseLatencyRange: {x: 0.25, y: 0.75}
+  socialAttention: 0.35
+  stimulusInterest: 0.45
+  distractibility: 0.45
+  gazeAvoidance: 0.25
+  randomizeProfileOnStart: 1
+  teacherFaceFallback: {x: 0, y: 1.4, z: 2.2}
+  teacherHandsFallback: {x: 0, y: 0.85, z: 1.5}
+  stimulusFallback: {x: 0, y: 0.75, z: 0.9}
+  deskFallback: {x: 0, y: 0.45, z: 0.55}
+  reinforcerFallback: {x: 0.35, y: 0.75, z: 0.8}
+  leftDistractorFallback: {x: -1.2, y: 1, z: 0.5}
+  rightDistractorFallback: {x: 1.2, y: 1, z: 0.5}
+  groundFallback: {x: 0.25, y: -0.25, z: 0.8}
+  awayFallback: {x: 1.4, y: 0.85, z: -0.2}
+--- !u!114 &8436758304425776484
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2867422110698743247}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: feb29ea5992e643b5a21735c1f5e4297, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  humanoidAnimator: {fileID: 724965152764049669}
+  eyeController: {fileID: 2044120572536909725}
+  targetOverride: {fileID: 0}
+  followEnabled: 1
+  useEyeControllerTarget: 1
+  headYawWeight: 0.45
+  neckYawWeight: 0.25
+  chestYawWeight: 0.14
+  spineYawWeight: 0.06
+  headPitchWeight: 0.36
+  neckPitchWeight: 0.2
+  chestPitchWeight: 0.08
+  spinePitchWeight: 0.03
+  maxHeadYaw: 24
+  maxNeckYaw: 16
+  maxChestYaw: 10
+  maxSpineYaw: 5
+  maxHeadPitch: 14
+  maxNeckPitch: 8
+  maxChestPitch: 5
+  maxSpinePitch: 3
+  followSmoothTime: 0.32
+  returnSmoothTime: 0.45
+  deadZoneYaw: 4
+  deadZonePitch: 3
+  maxSourceYaw: 70
+  maxSourcePitch: 35
 --- !u!1 &2895999164162014052
 GameObject:
   m_ObjectHideFlags: 0
