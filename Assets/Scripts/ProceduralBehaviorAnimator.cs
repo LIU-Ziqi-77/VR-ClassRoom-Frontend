@@ -20,6 +20,12 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     [Header("Tuning")]
     public float defaultTransitionTime = 0.4f;
 
+    [Header("Touch Nose Pose")]
+    [Tooltip("Approximate wrist offset from the face when touching the nose. X=student right, Y=up, Z=face forward.")]
+    public Vector3 touchNoseWristOffset = new Vector3(0.045f, -0.055f, 0.075f);
+    [Tooltip("Soft contact point used for the head to subtly meet the hand. X=student right, Y=up, Z=face forward.")]
+    public Vector3 touchNoseFaceContactOffset = new Vector3(0.01f, -0.012f, 0.085f);
+
     private Coroutine _activeBehavior;
     private bool _behaviorActive;
     private PlayableGraph _clipGraph;
@@ -199,6 +205,11 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     public void PlayLieDown(float duration = 0f)
     {
         StartBehavior(LieDownRoutine(duration));
+    }
+
+    public void PlayTouchNose(float duration = 3f)
+    {
+        StartBehavior(TouchNoseRoutine(duration));
     }
 
     public void PlaySpeakingMotion(float duration)
@@ -1234,6 +1245,26 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         out Quaternion upperLocal,
         out Quaternion lowerLocal)
     {
+        Vector3 bendHint = transform.right * outwardSign * 0.85f + Vector3.down * 0.25f + transform.forward * 0.42f;
+        ComputeArmIKToTarget(
+            upperBone,
+            lowerBone,
+            handBone,
+            target,
+            bendHint,
+            out upperLocal,
+            out lowerLocal);
+    }
+
+    void ComputeArmIKToTarget(
+        HumanBodyBones upperBone,
+        HumanBodyBones lowerBone,
+        HumanBodyBones handBone,
+        Vector3 target,
+        Vector3 bendHint,
+        out Quaternion upperLocal,
+        out Quaternion lowerLocal)
+    {
         Transform upper = animator.GetBoneTransform(upperBone);
         Transform lower = animator.GetBoneTransform(lowerBone);
         Transform hand = animator.GetBoneTransform(handBone);
@@ -1255,7 +1286,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
         float a = Mathf.Clamp((upperLen * upperLen - lowerLen * lowerLen + distance * distance) / (2f * distance), 0.02f, upperLen - 0.01f);
         float h = Mathf.Sqrt(Mathf.Max(0.0001f, upperLen * upperLen - a * a));
-        Vector3 bendDir = Vector3.ProjectOnPlane(transform.right * outwardSign * 0.85f + Vector3.down * 0.25f + transform.forward * 0.42f, targetDir);
+        Vector3 bendDir = Vector3.ProjectOnPlane(bendHint, targetDir);
         if (bendDir.sqrMagnitude < 0.0001f)
         {
             bendDir = Vector3.ProjectOnPlane(Vector3.down, targetDir);
@@ -1268,6 +1299,144 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
         upperLocal = AimBone(upperBone, lowerBone, upperDir);
         lowerLocal = AimBoneWithPredictedParent(lowerBone, handBone, lowerDir, upperLocal);
+    }
+
+    /// TOUCH NOSE: DTT instruction response with coordinated head, torso, and right arm.
+    IEnumerator TouchNoseRoutine(float duration)
+    {
+        CurrentBehaviorName = "摸鼻子";
+        while (!_restPoseCaptured) yield return null;
+
+        float entrySeconds = Random.Range(0.72f, 0.9f);
+        float exitSeconds = Random.Range(0.55f, 0.7f);
+        float totalDuration = Mathf.Max(2f, duration);
+        float holdSeconds = Mathf.Max(0.35f, totalDuration - entrySeconds - exitSeconds);
+        float headYaw = Random.Range(-1.5f, 1.5f);
+        float wristSeed = Random.Range(0f, 6.28f);
+
+        float t = 0f;
+        while (t < entrySeconds && _behaviorActive)
+        {
+            float p = Mathf.SmoothStep(0f, 1f, t / entrySeconds);
+            ApplyTouchNosePose(p, headYaw, 0f);
+            t += Time.deltaTime;
+            yield return null;
+        }
+
+        t = 0f;
+        while (t < holdSeconds && _behaviorActive)
+        {
+            float tiny = Mathf.Sin(t * 2.2f + wristSeed) * 0.8f;
+            float nod = Mathf.Sin(t * 1.4f + wristSeed) * 0.55f;
+            ApplyTouchNosePose(1f, headYaw + nod, tiny);
+            t += Time.deltaTime;
+            yield return null;
+        }
+
+        if (!_behaviorActive) yield break;
+
+        t = 0f;
+        while (t < exitSeconds && _behaviorActive)
+        {
+            float p = 1f - Mathf.SmoothStep(0f, 1f, t / exitSeconds);
+            ApplyTouchNosePose(p, headYaw * p, 0f);
+            t += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    void ApplyTouchNosePose(float weight, float headYaw, float wristFidget)
+    {
+        Transform head = animator.GetBoneTransform(HumanBodyBones.Head);
+        if (head == null) return;
+
+        Vector3 faceForward = GetHeadFaceForward(head);
+        Vector3 right = transform.right;
+        Vector3 up = Vector3.up;
+        Vector3 faceContact = head.position
+            + right * touchNoseFaceContactOffset.x
+            + up * touchNoseFaceContactOffset.y
+            + faceForward * touchNoseFaceContactOffset.z;
+
+        Vector3 wristTarget = head.position
+            + right * touchNoseWristOffset.x
+            + up * touchNoseWristOffset.y
+            + faceForward * touchNoseWristOffset.z;
+        wristTarget = KeepPointOutsideHead(wristTarget, head.position, faceForward, 0.07f, 0.04f);
+
+        Quaternion rightUpperArmTarget;
+        Quaternion rightLowerArmTarget;
+        ComputeArmIKToTarget(
+            HumanBodyBones.RightUpperArm,
+            HumanBodyBones.RightLowerArm,
+            HumanBodyBones.RightHand,
+            wristTarget,
+            right * 0.75f + Vector3.down * 0.45f - faceForward * 0.08f,
+            out rightUpperArmTarget,
+            out rightLowerArmTarget);
+
+        Quaternion forearmFutureWorld = PredictForearmWorld(rightUpperArmTarget, rightLowerArmTarget);
+        Vector3 palmToFace = (faceContact - wristTarget).normalized;
+        if (palmToFace.sqrMagnitude < 0.001f)
+        {
+            palmToFace = -faceForward;
+        }
+        Quaternion handTarget = ComputePalmCorrectedHand(HumanBodyBones.RightHand, palmToFace, forearmFutureWorld);
+        handTarget *= Quaternion.Euler(0f, -4f + wristFidget * 0.2f, 3f);
+
+        SetOverride(HumanBodyBones.Spine,
+            Rest(HumanBodyBones.Spine) * Quaternion.Euler(3f, headYaw * 0.16f, 0f), weight);
+        if (_restPose.ContainsKey(HumanBodyBones.Chest))
+            SetOverride(HumanBodyBones.Chest,
+                Rest(HumanBodyBones.Chest) * Quaternion.Euler(2f, headYaw * 0.2f, 0f), weight);
+        if (_restPose.ContainsKey(HumanBodyBones.UpperChest))
+            SetOverride(HumanBodyBones.UpperChest,
+                Rest(HumanBodyBones.UpperChest) * Quaternion.Euler(1.5f, headYaw * 0.16f, 0f), weight);
+
+        SetOverride(HumanBodyBones.Neck,
+            Rest(HumanBodyBones.Neck) * Quaternion.Euler(1.5f, headYaw * 0.3f, 0f), weight);
+        SetOverride(HumanBodyBones.Head,
+            Rest(HumanBodyBones.Head) * Quaternion.Euler(2.5f, headYaw, 0f), weight);
+        SetOverride(HumanBodyBones.RightUpperArm, rightUpperArmTarget, weight);
+        SetOverride(HumanBodyBones.RightLowerArm, rightLowerArmTarget, weight);
+        SetOverride(HumanBodyBones.RightHand, handTarget, weight);
+    }
+
+    Vector3 GetHeadFaceForward(Transform head)
+    {
+        Vector3 faceForward = head.forward;
+        if (Vector3.Dot(faceForward, transform.forward) < 0f)
+        {
+            faceForward = -faceForward;
+        }
+
+        faceForward.y = Mathf.Clamp(faceForward.y, -0.35f, 0.35f);
+        if (faceForward.sqrMagnitude < 0.0001f)
+        {
+            faceForward = transform.forward;
+        }
+
+        return faceForward.normalized;
+    }
+
+    Vector3 KeepPointOutsideHead(Vector3 point, Vector3 headCenter, Vector3 faceForward, float minForward, float minRadius)
+    {
+        Vector3 offset = point - headCenter;
+        float forwardDistance = Vector3.Dot(offset, faceForward);
+        if (forwardDistance < minForward)
+        {
+            point += faceForward * (minForward - forwardDistance);
+            offset = point - headCenter;
+        }
+
+        Vector3 lateral = Vector3.ProjectOnPlane(offset, faceForward);
+        if (lateral.magnitude < minRadius)
+        {
+            Vector3 pushDir = lateral.sqrMagnitude > 0.0001f ? lateral.normalized : transform.right;
+            point += pushDir * (minRadius - lateral.magnitude);
+        }
+
+        return point;
     }
 
     /// SPEAKING MOTION: natural head movement with varied rhythm

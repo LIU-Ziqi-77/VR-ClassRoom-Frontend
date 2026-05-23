@@ -16,6 +16,7 @@ using VRM;
 ///   W          Raise Hand
 ///   A          Ask Question (hand up + lean forward)
 ///   P          Clap hands
+///   N          Touch Nose
 ///   E          Lie Down / Slump
 ///   D          Distracted (look away + slouch)
 ///   C          Talk to Nearby Classmate
@@ -57,14 +58,19 @@ public class BehaviorDemoController : MonoBehaviour
     public float hitDeskDuration    = 3f;
     public float pushDuration       = 2f;
     public float lieDownDuration    = 8f;
+    public float touchNoseDuration  = 3f;
     public float clapDuration       = 3f;
     public float clapBlendIn        = 0.35f;
     public float clapBlendOut       = 0.45f;
     public Vector2 clapSpeedRange   = new Vector2(0.92f, 1.08f);
     public Vector2 clapDurationJitter = new Vector2(-0.25f, 0.2f);
+    public float touchNoseBlendIn   = 0.25f;
+    public float touchNoseBlendOut  = 0.35f;
 
     [Header("Imported Behavior Clips")]
     public AnimationClip clappingClip;
+    [Tooltip("Optional imported humanoid FBX clip for touch-nose. If empty, the procedural pose is used.")]
+    public AnimationClip touchNoseClip;
 
     [Tooltip("How far from the seat the student walks when leaving (world units).")]
     public float leaveSeatDistance = 2.5f;
@@ -196,6 +202,7 @@ public class BehaviorDemoController : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.W)) DoTrigger("RaiseHand",       TriggerRaiseHand);
         if (Input.GetKeyDown(KeyCode.A)) DoTrigger("AskQuestion",     TriggerAskQuestion);
         if (Input.GetKeyDown(KeyCode.P)) DoTrigger("Clap",            TriggerClap);
+        if (Input.GetKeyDown(KeyCode.N)) DoTrigger("TouchNose",       TriggerTouchNose);
         if (Input.GetKeyDown(KeyCode.E)) DoTrigger("LieDown",         TriggerLieDown);
         if (Input.GetKeyDown(KeyCode.D)) DoTrigger("Distracted",      TriggerDistracted);
         if (Input.GetKeyDown(KeyCode.C)) DoTrigger("TalkClassmate",   TriggerTalkToClassmate);
@@ -339,6 +346,30 @@ public class BehaviorDemoController : MonoBehaviour
         pba.PlayUpperBodyAnimationClip(clappingClip, duration, "拍手", clapBlendIn, clapBlendOut, speed);
         _lastAction = "拍手";
         Log($"Clap ({duration:F1}s, speed {speed:F2}x)");
+    }
+
+    public void TriggerTouchNose()
+    {
+        var pba = CurrentPBA;
+        if (pba == null) { _lastDiag = "TouchNose failed: no selected student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
+
+        if (touchNoseClip != null)
+        {
+            pba.PlayUpperBodyAnimationClip(
+                touchNoseClip,
+                touchNoseDuration,
+                "摸鼻子",
+                touchNoseBlendIn,
+                touchNoseBlendOut,
+                1f);
+        }
+        else
+        {
+            pba.PlayTouchNose(touchNoseDuration);
+        }
+
+        _lastAction = "摸鼻子";
+        Log("Touch Nose");
     }
 
     public void TriggerDistracted()
@@ -565,6 +596,7 @@ public class BehaviorDemoController : MonoBehaviour
         if (GUILayout.Button("W  举手",  GUILayout.Height(28))) { _buttonClickCount++; TriggerRaiseHand(); }
         if (GUILayout.Button("A  提问",  GUILayout.Height(28))) { _buttonClickCount++; TriggerAskQuestion(); }
         if (GUILayout.Button("P  拍手",  GUILayout.Height(28))) { _buttonClickCount++; TriggerClap(); }
+        if (GUILayout.Button("N  摸鼻子", GUILayout.Height(28))) { _buttonClickCount++; TriggerTouchNose(); }
         GUILayout.EndHorizontal();
 
         GUILayout.Space(2);
@@ -631,6 +663,7 @@ public class BehaviorDemoController : MonoBehaviour
   W            举手 (Raise Hand)
   A            举手提问 (Ask Question)
   P            拍手 3 秒 (Clap)
+  N            摸鼻子 (Touch Nose)
 
   ── Disruptive ──
   D            走神 (Distracted)
