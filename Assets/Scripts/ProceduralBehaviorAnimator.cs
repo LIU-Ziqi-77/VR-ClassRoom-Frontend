@@ -39,6 +39,16 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     private bool _restPoseCaptured;
     private bool _applyOverrides;
 
+    private struct DeskSlumpTargets
+    {
+        public bool foundDesk;
+        public Vector3 leftHand;
+        public Vector3 rightHand;
+        public Vector3 forward;
+        public Vector3 right;
+        public float surfaceY;
+    }
+
     static readonly HumanBodyBones[] TrackedBones = {
         HumanBodyBones.Spine, HumanBodyBones.Chest, HumanBodyBones.UpperChest,
         HumanBodyBones.Neck, HumanBodyBones.Head,
@@ -978,34 +988,286 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         yield return new WaitForSeconds(Mathf.Max(0, duration - 1.1f));
     }
 
-    /// LIE DOWN / SLUMP: spine and head collapse forward
+    /// LIE DOWN / SLUMP: continuous shallow desk slump with visible hands.
     IEnumerator LieDownRoutine(float duration)
     {
         CurrentBehaviorName = "趴桌";
-        var pose = new Dictionary<HumanBodyBones, Quaternion> {
-            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(35f, 0, 0),
-            [HumanBodyBones.Neck] = Rest(HumanBodyBones.Neck) * Quaternion.Euler(25f, 0, 0),
-            [HumanBodyBones.Head] = Rest(HumanBodyBones.Head) * Quaternion.Euler(30f, 15f, 0),
-            [HumanBodyBones.LeftUpperArm] = Rest(HumanBodyBones.LeftUpperArm) * Quaternion.Euler(50f, 0, 20f),
-            [HumanBodyBones.RightUpperArm] = Rest(HumanBodyBones.RightUpperArm) * Quaternion.Euler(50f, 0, -20f),
-            [HumanBodyBones.LeftLowerArm] = Rest(HumanBodyBones.LeftLowerArm) * Quaternion.Euler(0, 60f, 0),
-            [HumanBodyBones.RightLowerArm] = Rest(HumanBodyBones.RightLowerArm) * Quaternion.Euler(0, -60f, 0),
-        };
 
-        if (_restPose.ContainsKey(HumanBodyBones.Chest))
-            pose[HumanBodyBones.Chest] = Rest(HumanBodyBones.Chest) * Quaternion.Euler(20f, 0, 0);
+        while (!_restPoseCaptured) yield return null;
 
-        yield return StartCoroutine(TransitionTo(pose, 0.8f));
+        int variant = Random.Range(0, 3);
+        float side = Random.value > 0.5f ? 1f : -1f;
+        float yaw = variant == 2 ? side * Random.Range(5f, 8f) : Random.Range(-3f, 4f);
+        float roll = variant == 2 ? side * Random.Range(3f, 6f) : Random.Range(-2f, 3f);
+        float entrySeconds = Random.Range(1.45f, 1.85f);
+        float exitSeconds = Random.Range(0.9f, 1.2f);
+        float totalDuration = duration > 0 ? duration : 999f;
+        float holdSeconds = Mathf.Max(0.4f, totalDuration - entrySeconds - exitSeconds);
 
-        float t = 0;
-        float endTime = duration > 0 ? duration : 999f;
-        while (t < endTime && _behaviorActive)
+        DeskSlumpTargets targets = FindLieDownDeskTargets(variant, side);
+
+        float t = 0f;
+        while (t < entrySeconds && _behaviorActive)
         {
-            float breath = Mathf.Sin(t * 1.5f) * 1.5f;
-            SetOverride(HumanBodyBones.Spine, Rest(HumanBodyBones.Spine) * Quaternion.Euler(35f + breath, 0, 0));
+            float p = Mathf.SmoothStep(0f, 1f, t / entrySeconds);
+            float armDelay = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.18f, 1f, p));
+            ApplyLieDownPose(
+                variant,
+                side,
+                yaw,
+                roll,
+                p,
+                0f,
+                0f,
+                armDelay,
+                targets);
             t += Time.deltaTime;
             yield return null;
         }
+
+        float shiftSeed = Random.Range(0f, 6.28f);
+        t = 0f;
+        while (t < holdSeconds && _behaviorActive)
+        {
+            float breath = Mathf.Sin(t * 1.25f + shiftSeed) * 0.65f;
+            float tinyShift = Mathf.Sin(t * 0.62f + shiftSeed) * 0.45f;
+            float handFidget = Mathf.Sin(t * 1.8f + shiftSeed) * 0.8f;
+            ApplyLieDownPose(
+                variant,
+                side,
+                yaw + tinyShift,
+                roll + tinyShift * 0.35f,
+                1f,
+                breath,
+                handFidget,
+                1f,
+                targets);
+            t += Time.deltaTime;
+            yield return null;
+        }
+
+        if (!_behaviorActive) yield break;
+
+        t = 0f;
+        while (t < exitSeconds && _behaviorActive)
+        {
+            float p = 1f - Mathf.SmoothStep(0f, 1f, t / exitSeconds);
+            ApplyLieDownPose(
+                variant,
+                side,
+                yaw * p,
+                roll * p,
+                p,
+                0f,
+                0f,
+                p,
+                targets);
+            t += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    Dictionary<HumanBodyBones, Quaternion> BuildLieDownPose(int variant, float side, float yaw, float roll, float intensity)
+    {
+        float finalSpine = variant == 0 ? 22f : (variant == 1 ? 30f : 26f);
+        float finalChest = variant == 0 ? 12f : (variant == 1 ? 18f : 16f);
+        float finalNeck = variant == 0 ? 14f : (variant == 1 ? 21f : 18f);
+        float finalHead = variant == 0 ? 19f : (variant == 1 ? 29f : 25f);
+
+        float forward = Mathf.Lerp(0f, finalSpine, intensity);
+        float chestForward = Mathf.Lerp(0f, finalChest, intensity);
+        float neckForward = Mathf.Lerp(0f, finalNeck, intensity);
+        float headForward = Mathf.Lerp(0f, finalHead, intensity);
+
+        var pose = new Dictionary<HumanBodyBones, Quaternion> {
+            [HumanBodyBones.Spine] = Rest(HumanBodyBones.Spine) * Quaternion.Euler(forward, yaw * 0.25f, roll * 0.2f),
+            [HumanBodyBones.Neck] = Rest(HumanBodyBones.Neck) * Quaternion.Euler(neckForward, yaw * 0.45f, roll * 0.35f),
+            [HumanBodyBones.Head] = Rest(HumanBodyBones.Head) * Quaternion.Euler(headForward, yaw, roll),
+        };
+
+        if (_restPose.ContainsKey(HumanBodyBones.Chest))
+            pose[HumanBodyBones.Chest] = Rest(HumanBodyBones.Chest) * Quaternion.Euler(chestForward, yaw * 0.18f, roll * 0.12f);
+        if (_restPose.ContainsKey(HumanBodyBones.UpperChest))
+            pose[HumanBodyBones.UpperChest] = Rest(HumanBodyBones.UpperChest) * Quaternion.Euler(chestForward * 0.65f, yaw * 0.12f, roll * 0.1f);
+
+        return pose;
+    }
+
+    void ApplyLieDownPose(
+        int variant,
+        float side,
+        float yaw,
+        float roll,
+        float intensity,
+        float breath,
+        float handFidget,
+        float armWeight,
+        DeskSlumpTargets targets)
+    {
+        Dictionary<HumanBodyBones, Quaternion> pose = BuildLieDownPose(variant, side, yaw, roll, 1f);
+        foreach (var kv in pose)
+        {
+            SetOverride(kv.Key, kv.Value, intensity);
+        }
+
+        float spineBase = variant == 0 ? 22f : (variant == 1 ? 30f : 26f);
+        float chestBase = variant == 0 ? 12f : (variant == 1 ? 18f : 16f);
+        SetOverride(HumanBodyBones.Spine,
+            Rest(HumanBodyBones.Spine) * Quaternion.Euler((spineBase + breath) * intensity, yaw * 0.25f, roll * 0.2f), intensity);
+        if (_restPose.ContainsKey(HumanBodyBones.Chest))
+            SetOverride(HumanBodyBones.Chest,
+                Rest(HumanBodyBones.Chest) * Quaternion.Euler((chestBase + breath * 0.45f) * intensity, yaw * 0.18f, roll * 0.12f), intensity);
+
+        Quaternion leftUpperArmTarget;
+        Quaternion rightUpperArmTarget;
+        Quaternion leftLowerArmTarget;
+        Quaternion rightLowerArmTarget;
+        ComputeArmIKToTarget(
+            HumanBodyBones.LeftUpperArm,
+            HumanBodyBones.LeftLowerArm,
+            HumanBodyBones.LeftHand,
+            targets.leftHand,
+            -1f,
+            out leftUpperArmTarget,
+            out leftLowerArmTarget);
+        ComputeArmIKToTarget(
+            HumanBodyBones.RightUpperArm,
+            HumanBodyBones.RightLowerArm,
+            HumanBodyBones.RightHand,
+            targets.rightHand,
+            1f,
+            out rightUpperArmTarget,
+            out rightLowerArmTarget);
+
+        SetOverride(HumanBodyBones.LeftUpperArm, leftUpperArmTarget, armWeight);
+        SetOverride(HumanBodyBones.RightUpperArm, rightUpperArmTarget, armWeight);
+        SetOverride(HumanBodyBones.LeftLowerArm, leftLowerArmTarget, armWeight);
+        SetOverride(HumanBodyBones.RightLowerArm, rightLowerArmTarget, armWeight);
+        SetOverride(HumanBodyBones.LeftHand,
+            Rest(HumanBodyBones.LeftHand) * Quaternion.Euler(handFidget, 0f, handFidget * 0.4f), armWeight);
+        SetOverride(HumanBodyBones.RightHand,
+            Rest(HumanBodyBones.RightHand) * Quaternion.Euler(-handFidget * 0.8f, 0f, handFidget * -0.35f), armWeight);
+    }
+
+    DeskSlumpTargets FindLieDownDeskTargets(int variant, float side)
+    {
+        Vector3 chest = transform.position + Vector3.up * 0.95f;
+        Transform chestBone = animator.GetBoneTransform(HumanBodyBones.Chest);
+        if (chestBone != null)
+        {
+            chest = chestBone.position;
+        }
+
+        Renderer bestRenderer = null;
+        Bounds bestBounds = default;
+        float bestScore = float.MaxValue;
+        Renderer[] renderers = FindObjectsOfType<Renderer>();
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null || renderer.transform.IsChildOf(transform)) continue;
+
+            Bounds bounds = renderer.bounds;
+            Vector3 toCenter = bounds.center - chest;
+            Vector3 flat = Vector3.ProjectOnPlane(toCenter, Vector3.up);
+            float forwardDistance = Vector3.Dot(flat, transform.forward);
+            float sideDistance = Mathf.Abs(Vector3.Dot(flat, transform.right));
+            float topY = bounds.max.y;
+            Vector3 size = bounds.size;
+
+            if (forwardDistance < 0.2f || forwardDistance > 2.4f) continue;
+            if (sideDistance > 1.45f) continue;
+            if (topY < 0.45f || topY > 1.2f) continue;
+            if (size.x < 0.35f || size.z < 0.25f) continue;
+
+            float score = forwardDistance + sideDistance * 0.7f + Mathf.Abs(topY - 0.75f) * 0.8f;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestRenderer = renderer;
+                bestBounds = bounds;
+            }
+        }
+
+        Vector3 fwd = transform.forward;
+        Vector3 right = transform.right;
+        Vector3 nearPoint = transform.position + fwd * 0.72f;
+        float surfaceY = transform.position.y + 0.76f;
+
+        if (bestRenderer != null)
+        {
+            surfaceY = bestBounds.max.y + 0.045f;
+            Vector3 flatToDesk = Vector3.ProjectOnPlane(bestBounds.center - chest, Vector3.up);
+            if (flatToDesk.sqrMagnitude > 0.0001f)
+            {
+                fwd = flatToDesk.normalized;
+                right = Vector3.Cross(Vector3.up, fwd).normalized;
+            }
+
+            nearPoint = bestBounds.ClosestPoint(chest);
+            nearPoint.y = surfaceY;
+            nearPoint += fwd * 0.05f;
+        }
+
+        float handSpread = variant == 2 ? 0.16f : 0.18f;
+        float sideBias = variant == 2 ? side * 0.06f : 0f;
+        Vector3 tuckedOffset = -fwd * 0.06f + right * side * 0.03f;
+        Vector3 reachingOffset = fwd * 0.04f - right * side * 0.02f;
+        DeskSlumpTargets targets = new DeskSlumpTargets
+        {
+            foundDesk = bestRenderer != null,
+            forward = fwd,
+            right = right,
+            surfaceY = surfaceY,
+            leftHand = nearPoint - right * handSpread + right * sideBias + (side < 0f ? tuckedOffset : reachingOffset),
+            rightHand = nearPoint + right * handSpread + right * sideBias + (side > 0f ? tuckedOffset : reachingOffset)
+        };
+
+        return targets;
+    }
+
+    void ComputeArmIKToTarget(
+        HumanBodyBones upperBone,
+        HumanBodyBones lowerBone,
+        HumanBodyBones handBone,
+        Vector3 target,
+        float outwardSign,
+        out Quaternion upperLocal,
+        out Quaternion lowerLocal)
+    {
+        Transform upper = animator.GetBoneTransform(upperBone);
+        Transform lower = animator.GetBoneTransform(lowerBone);
+        Transform hand = animator.GetBoneTransform(handBone);
+        if (upper == null || lower == null || hand == null)
+        {
+            upperLocal = Rest(upperBone);
+            lowerLocal = Rest(lowerBone);
+            return;
+        }
+
+        Vector3 shoulder = upper.position;
+        float upperLen = Mathf.Max(0.05f, Vector3.Distance(upper.position, lower.position));
+        float lowerLen = Mathf.Max(0.05f, Vector3.Distance(lower.position, hand.position));
+        Vector3 shoulderToTarget = target - shoulder;
+        float distance = Mathf.Clamp(shoulderToTarget.magnitude, 0.08f, upperLen + lowerLen - 0.02f);
+        Vector3 targetDir = shoulderToTarget.sqrMagnitude > 0.0001f
+            ? shoulderToTarget.normalized
+            : transform.forward;
+
+        float a = Mathf.Clamp((upperLen * upperLen - lowerLen * lowerLen + distance * distance) / (2f * distance), 0.02f, upperLen - 0.01f);
+        float h = Mathf.Sqrt(Mathf.Max(0.0001f, upperLen * upperLen - a * a));
+        Vector3 bendDir = Vector3.ProjectOnPlane(transform.right * outwardSign * 0.85f + Vector3.down * 0.25f + transform.forward * 0.42f, targetDir);
+        if (bendDir.sqrMagnitude < 0.0001f)
+        {
+            bendDir = Vector3.ProjectOnPlane(Vector3.down, targetDir);
+        }
+        bendDir.Normalize();
+
+        Vector3 elbow = shoulder + targetDir * a + bendDir * h;
+        Vector3 upperDir = (elbow - shoulder).normalized;
+        Vector3 lowerDir = (target - elbow).normalized;
+
+        upperLocal = AimBone(upperBone, lowerBone, upperDir);
+        lowerLocal = AimBoneWithPredictedParent(lowerBone, handBone, lowerDir, upperLocal);
     }
 
     /// SPEAKING MOTION: natural head movement with varied rhythm
