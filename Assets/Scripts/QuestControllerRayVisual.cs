@@ -15,6 +15,7 @@ public class QuestControllerRayVisual : MonoBehaviour
 
     [Header("Visuals")]
     public bool showRay = true;
+    public bool showOnlyWhenControllerPose = true;
     public float lineWidth = 0.012f;
     public Color idleColor = new Color(0.15f, 0.95f, 1f, 0.95f);
     public Color hitColor = new Color(0.25f, 1f, 0.35f, 1f);
@@ -44,7 +45,7 @@ public class QuestControllerRayVisual : MonoBehaviour
             ApplyCameraFallbackPose();
         }
 
-        UpdateRayVisual();
+        UpdateRayVisual(hasControllerPose || !showOnlyWhenControllerPose);
     }
 
     private bool TryApplyControllerPose()
@@ -76,7 +77,7 @@ public class QuestControllerRayVisual : MonoBehaviour
             cameraTransform.rotation * Quaternion.Euler(cameraLocalEuler));
     }
 
-    private void UpdateRayVisual()
+    private void UpdateRayVisual(bool canShowRay)
     {
         EnsureVisuals();
 
@@ -93,7 +94,7 @@ public class QuestControllerRayVisual : MonoBehaviour
 
         if (lineRenderer != null)
         {
-            lineRenderer.enabled = showRay;
+            lineRenderer.enabled = showRay && canShowRay;
             lineRenderer.startColor = color;
             lineRenderer.endColor = new Color(color.r, color.g, color.b, color.a * 0.18f);
             lineRenderer.startWidth = lineWidth;
@@ -104,7 +105,7 @@ public class QuestControllerRayVisual : MonoBehaviour
 
         if (reticle != null)
         {
-            reticle.gameObject.SetActive(showRay && hitSomething);
+            reticle.gameObject.SetActive(showRay && canShowRay && hitSomething);
             if (hitSomething)
             {
                 reticle.position = hit.point;

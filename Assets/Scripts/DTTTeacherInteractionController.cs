@@ -44,6 +44,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
     private bool previousTrigger;
     private bool previousHold;
     private bool usingDesktopRayOrigin;
+    private bool hasControllerPoseThisFrame;
     private string currentAimLabel = "Aim: none";
     private GUIStyle hintStyle;
 
@@ -63,7 +64,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
             if (manager == null) return;
         }
 
-        UpdateRuntimeControllerAnchor();
+        hasControllerPoseThisFrame = UpdateRuntimeControllerAnchor();
 
         Transform rayOrigin = GetRayOrigin();
         if (rayOrigin == null) return;
@@ -200,14 +201,17 @@ public class DTTTeacherInteractionController : MonoBehaviour
 
     private Transform GetRayOrigin()
     {
-        if (rayOriginOverride != null)
+        if (ShouldUseXrControllerRay())
         {
-            return rayOriginOverride;
-        }
+            if (rayOriginOverride != null)
+            {
+                return rayOriginOverride;
+            }
 
-        if (runtimeControllerAnchor != null)
-        {
-            return runtimeControllerAnchor;
+            if (runtimeControllerAnchor != null)
+            {
+                return runtimeControllerAnchor;
+            }
         }
 
         return Camera.main != null ? Camera.main.transform : null;
@@ -215,12 +219,19 @@ public class DTTTeacherInteractionController : MonoBehaviour
 
     private Transform GetHoldAnchor(Transform fallbackRayOrigin)
     {
-        if (holdAnchorOverride != null)
+        if (ShouldUseXrControllerRay() && holdAnchorOverride != null)
         {
             return holdAnchorOverride;
         }
 
-        return runtimeControllerAnchor != null ? runtimeControllerAnchor : fallbackRayOrigin;
+        return ShouldUseXrControllerRay() && runtimeControllerAnchor != null
+            ? runtimeControllerAnchor
+            : fallbackRayOrigin;
+    }
+
+    private bool ShouldUseXrControllerRay()
+    {
+        return useXRInput && hasControllerPoseThisFrame;
     }
 
     private bool GetSelectDown()
@@ -315,15 +326,15 @@ public class DTTTeacherInteractionController : MonoBehaviour
         return controllerDevice.isValid;
     }
 
-    private void UpdateRuntimeControllerAnchor()
+    private bool UpdateRuntimeControllerAnchor()
     {
-        if (!useXRInput || !TryGetControllerDevice()) return;
+        if (!useXRInput || !TryGetControllerDevice()) return false;
 
         Vector3 position;
         Quaternion rotation;
         bool hasPosition = controllerDevice.TryGetFeatureValue(CommonUsages.devicePosition, out position);
         bool hasRotation = controllerDevice.TryGetFeatureValue(CommonUsages.deviceRotation, out rotation);
-        if (!hasPosition || !hasRotation) return;
+        if (!hasPosition || !hasRotation) return false;
 
         if (runtimeControllerAnchor == null)
         {
@@ -333,5 +344,6 @@ public class DTTTeacherInteractionController : MonoBehaviour
         }
 
         runtimeControllerAnchor.SetPositionAndRotation(position, rotation);
+        return true;
     }
 }

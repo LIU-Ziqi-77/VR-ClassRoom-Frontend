@@ -256,6 +256,7 @@ public static class Quest3InteractionSetup
 
         visual.controllerNode = node;
         visual.showRay = visibleRay;
+        visual.showOnlyWhenControllerPose = true;
         visual.rayDistance = 12f;
         visual.raycastMask = ~0;
         visual.fallbackToCameraWhenNoController = true;
