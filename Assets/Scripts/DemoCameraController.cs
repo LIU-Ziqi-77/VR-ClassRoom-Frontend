@@ -24,13 +24,18 @@ public class DemoCameraController : MonoBehaviour
 
     void Start()
     {
+        ResetLookFromCurrentTransform();
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
+    public void ResetLookFromCurrentTransform()
+    {
         Vector3 euler = transform.eulerAngles;
         _yaw = euler.y;
         _pitch = euler.x;
         if (_pitch > 180f) _pitch -= 360f;
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
     }
 
     void Update()

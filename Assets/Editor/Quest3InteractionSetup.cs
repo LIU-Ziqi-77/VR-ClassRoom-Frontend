@@ -8,13 +8,16 @@ using Unity.XR.Oculus;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.SceneManagement;
+using UnityEditor.XR.Management;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
+using UnityEngine.SpatialTracking;
 using UnityEngine.XR;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
+using UnityEngine.XR.Management;
 using UnityEngine.XR.OpenXR;
 using UnityEngine.XR.OpenXR.Features;
 using UnityEngine.XR.OpenXR.Features.Interactions;
@@ -56,8 +59,34 @@ public static class Quest3InteractionSetup
         PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
         PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.Vulkan });
 
+        ConfigureXrManagement();
         ConfigureOpenXrFeatures();
         ConfigureOculusSettings();
+    }
+
+    private static void ConfigureXrManagement()
+    {
+        XRGeneralSettings generalSettings =
+            XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Android);
+        if (generalSettings == null)
+        {
+            Debug.LogWarning("[Quest3InteractionSetup] Android XR General Settings not found.");
+            return;
+        }
+
+        generalSettings.InitManagerOnStart = true;
+        XRManagerSettings managerSettings = generalSettings.AssignedSettings;
+        if (managerSettings == null)
+        {
+            Debug.LogWarning("[Quest3InteractionSetup] Android XR Manager Settings not found.");
+            EditorUtility.SetDirty(generalSettings);
+            return;
+        }
+
+        managerSettings.automaticLoading = true;
+        managerSettings.automaticRunning = true;
+        EditorUtility.SetDirty(generalSettings);
+        EditorUtility.SetDirty(managerSettings);
     }
 
     private static void ConfigureOpenXrFeatures()
@@ -211,6 +240,8 @@ public static class Quest3InteractionSetup
             ? origin.CameraFloorOffsetObject.transform
             : origin.transform;
 
+        ConfigureXrCamera(origin);
+        ConfigureQuestLocomotion(origin);
         EnsureInteractionManager();
 
         Transform leftAnchor = EnsureControllerAnchor(cameraOffset, "Left Controller Anchor", XRNode.LeftHand, false);
@@ -222,6 +253,46 @@ public static class Quest3InteractionSetup
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
+    }
+
+    private static void ConfigureXrCamera(XROrigin origin)
+    {
+        Camera xrCamera = origin.Camera != null ? origin.Camera : Camera.main;
+        if (xrCamera == null)
+        {
+            Debug.LogWarning("[Quest3InteractionSetup] No XR camera found for head tracking setup.");
+            return;
+        }
+
+        TrackedPoseDriver poseDriver = xrCamera.GetComponent<TrackedPoseDriver>();
+        if (poseDriver == null)
+        {
+            poseDriver = xrCamera.gameObject.AddComponent<TrackedPoseDriver>();
+        }
+
+        poseDriver.SetPoseSource(TrackedPoseDriver.DeviceType.GenericXRDevice, TrackedPoseDriver.TrackedPose.Center);
+        poseDriver.trackingType = TrackedPoseDriver.TrackingType.RotationAndPosition;
+        poseDriver.updateType = TrackedPoseDriver.UpdateType.UpdateAndBeforeRender;
+
+        EditorUtility.SetDirty(xrCamera.gameObject);
+    }
+
+    private static void ConfigureQuestLocomotion(XROrigin origin)
+    {
+        QuestThumbstickLocomotion locomotion = origin.GetComponent<QuestThumbstickLocomotion>();
+        if (locomotion == null)
+        {
+            locomotion = origin.gameObject.AddComponent<QuestThumbstickLocomotion>();
+        }
+
+        locomotion.xrOrigin = origin;
+        locomotion.moveHand = XRNode.LeftHand;
+        locomotion.turnHand = XRNode.RightHand;
+        locomotion.moveSpeed = 1.8f;
+        locomotion.deadzone = 0.18f;
+        locomotion.snapTurnDegrees = 45f;
+        locomotion.snapTurnCooldown = 0.35f;
+        EditorUtility.SetDirty(origin.gameObject);
     }
 
     private static void EnsureInteractionManager()

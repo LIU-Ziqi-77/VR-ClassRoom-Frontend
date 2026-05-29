@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.XR;
 
 public class FreeWalkCamera : MonoBehaviour
 {
@@ -9,6 +11,7 @@ public class FreeWalkCamera : MonoBehaviour
     public float jumpHeight = 2.0f;
 
     private CharacterController characterController;
+    private readonly List<InputDevice> xrDevices = new List<InputDevice>();
     private float rotationX = 0.0f;
     private float rotationY = 0.0f;
     private Vector3 moveDirection = Vector3.zero;
@@ -16,6 +19,11 @@ public class FreeWalkCamera : MonoBehaviour
 
     void Awake()
     {
+        if (ShouldUseXrHeadTracking())
+        {
+            return;
+        }
+
         // 在Awake中添加CharacterController组件，确保它在Start和Update之前初始化
         if (GetComponent<CharacterController>() == null)
         {
@@ -36,6 +44,11 @@ public class FreeWalkCamera : MonoBehaviour
 
     void Start()
     {
+        if (ShouldUseXrHeadTracking())
+        {
+            return;
+        }
+
         if (lockCursor)
         {
             Cursor.lockState = CursorLockMode.Locked;
@@ -43,10 +56,22 @@ public class FreeWalkCamera : MonoBehaviour
         }
     }
 
-void Update()
-{
-    // 先做射线检测
-    float rayDist = characterController.height * 0.5f + 0.1f; 
+	void Update()
+	{
+        if (ShouldUseXrHeadTracking())
+        {
+            ApplyXrHeadPose();
+            return;
+        }
+
+        if (characterController == null)
+        {
+            characterController = GetComponent<CharacterController>();
+            if (characterController == null) return;
+        }
+
+	    // 先做射线检测
+	    float rayDist = characterController.height * 0.5f + 0.1f; 
     bool hitGround = Physics.Raycast(transform.position, Vector3.down, rayDist);
     isGrounded = hitGround;
 
@@ -68,6 +93,50 @@ void Update()
     // 重力照常
     moveDirection.y -= gravity * Time.deltaTime;
 
-    characterController.Move(moveDirection * Time.deltaTime);
-}
-}
+	    characterController.Move(moveDirection * Time.deltaTime);
+	}
+
+    private bool ApplyXrHeadPose()
+    {
+        return TryApplyXrNodePose(XRNode.CenterEye) || TryApplyXrNodePose(XRNode.Head);
+    }
+
+    private bool TryApplyXrNodePose(XRNode node)
+    {
+        xrDevices.Clear();
+        InputDevices.GetDevicesAtXRNode(node, xrDevices);
+        if (xrDevices.Count == 0) return false;
+
+        InputDevice device = xrDevices[0];
+        if (!device.isValid) return false;
+
+        bool hasPosition = device.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 localPosition);
+        bool hasRotation = device.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion localRotation);
+        if (!hasPosition && !hasRotation) return false;
+
+        if (hasPosition) transform.localPosition = localPosition;
+        if (hasRotation) transform.localRotation = localRotation;
+        return true;
+    }
+
+    private static bool ShouldUseXrHeadTracking()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return true;
+#else
+        return HasTrackedHeadPose(XRNode.CenterEye) || HasTrackedHeadPose(XRNode.Head);
+#endif
+    }
+
+    private static bool HasTrackedHeadPose(XRNode node)
+    {
+        var devices = new List<InputDevice>();
+        InputDevices.GetDevicesAtXRNode(node, devices);
+        if (devices.Count == 0) return false;
+
+        InputDevice device = devices[0];
+        return device.isValid &&
+               (device.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 _) ||
+                device.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion _));
+    }
+}  

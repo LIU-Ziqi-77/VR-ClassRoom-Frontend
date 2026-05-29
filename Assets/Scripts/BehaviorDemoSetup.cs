@@ -19,6 +19,9 @@ using VRM;
 /// </summary>
 public class BehaviorDemoSetup : MonoBehaviour
 {
+    static readonly Vector3 DesktopFallbackCameraPosition = new Vector3(472.513f, 1.2393115f, 189.12f);
+    static readonly Quaternion DesktopFallbackCameraRotation = Quaternion.Euler(0f, -102.675f, 0f);
+
     [Header("Options")]
     public bool includeInactive = false;
     public bool disableOldTestControllers = true;
@@ -205,9 +208,7 @@ public class BehaviorDemoSetup : MonoBehaviour
             Debug.Log($"[BehaviorDemoSetup] Disabled FreeFlyCamera on '{cam.gameObject.name}'");
         }
 
-#pragma warning disable CS0618
-        bool xrActive = XRSettings.isDeviceActive || XRSettings.enabled;
-#pragma warning restore CS0618
+        bool xrActive = ShouldUseXrMode();
 
         if (xrActive)
         {
@@ -238,10 +239,7 @@ public class BehaviorDemoSetup : MonoBehaviour
         // DemoCameraController has uncontested world-space control.
         if (IsInsideXROrigin(mainCam.transform))
         {
-            Vector3 worldPos = mainCam.transform.position;
-            Quaternion worldRot = mainCam.transform.rotation;
             mainCam.transform.SetParent(null);
-            mainCam.transform.SetPositionAndRotation(worldPos, worldRot);
             Debug.Log("[BehaviorDemoSetup] Detached Main Camera from XR Origin for desktop mode.");
 
             // Disable any XR tracking components that might fight the camera controller
@@ -263,12 +261,17 @@ public class BehaviorDemoSetup : MonoBehaviour
             }
         }
 
+        Pose desktopStartPose = GetDesktopCameraStartPose();
+        mainCam.transform.SetPositionAndRotation(desktopStartPose.position, desktopStartPose.rotation);
+
         var existing = mainCam.GetComponent<DemoCameraController>();
         if (existing == null)
         {
-            mainCam.gameObject.AddComponent<DemoCameraController>();
+            existing = mainCam.gameObject.AddComponent<DemoCameraController>();
             Debug.Log($"[BehaviorDemoSetup] Added DemoCameraController to '{mainCam.gameObject.name}'");
         }
+
+        existing.ResetLookFromCurrentTransform();
 
         // Remove any leftover CharacterController from old walk cameras
         var cc = mainCam.GetComponent<CharacterController>();
@@ -279,6 +282,21 @@ public class BehaviorDemoSetup : MonoBehaviour
         }
 
         Debug.Log("[BehaviorDemoSetup] Desktop camera ready. Right-click + WASD to move.");
+    }
+
+    static Pose GetDesktopCameraStartPose()
+    {
+        Camera[] cameras = FindObjectsOfType<Camera>(true);
+        foreach (Camera camera in cameras)
+        {
+            if (camera != null && camera.gameObject.name == "High School Asset Camera (disabled)")
+            {
+                Transform t = camera.transform;
+                return new Pose(t.position, t.rotation);
+            }
+        }
+
+        return new Pose(DesktopFallbackCameraPosition, DesktopFallbackCameraRotation);
     }
 
     /// VR mode: add XRClassroomLocomotion to the XR Origin.
@@ -326,6 +344,27 @@ public class BehaviorDemoSetup : MonoBehaviour
         // Fallback: search by common GameObject name
         var go = GameObject.Find("XR Origin (VR)") ?? GameObject.Find("XR Origin") ?? GameObject.Find("XROrigin");
         return go;
+    }
+
+    static bool ShouldUseXrMode()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return true;
+#else
+        return HasTrackedHeadPose(XRNode.CenterEye) || HasTrackedHeadPose(XRNode.Head);
+#endif
+    }
+
+    static bool HasTrackedHeadPose(XRNode node)
+    {
+        var devices = new List<InputDevice>();
+        InputDevices.GetDevicesAtXRNode(node, devices);
+        if (devices.Count == 0) return false;
+
+        InputDevice device = devices[0];
+        return device.isValid &&
+               (device.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 _) ||
+                device.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion _));
     }
 
     // ─── Utilities ───────────────────────────────────────────
