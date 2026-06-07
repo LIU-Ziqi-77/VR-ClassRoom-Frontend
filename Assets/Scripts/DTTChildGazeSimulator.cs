@@ -122,13 +122,13 @@ public class DTTChildGazeSimulator : MonoBehaviour
         if (!keyboardTesting) return;
 
         HandleSelectionKeys();
-        if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4)) SetPhaseFromKeyboard(DTTGazePhase.TrialIdle);
-        if (Input.GetKeyDown(KeyCode.Alpha5) || Input.GetKeyDown(KeyCode.Keypad5)) SetPhaseFromKeyboard(DTTGazePhase.StimulusPresented);
-        if (Input.GetKeyDown(KeyCode.Alpha6) || Input.GetKeyDown(KeyCode.Keypad6)) SetPhaseFromKeyboard(DTTGazePhase.Prompted);
-        if (Input.GetKeyDown(KeyCode.Alpha7) || Input.GetKeyDown(KeyCode.Keypad7)) SetPhaseFromKeyboard(DTTGazePhase.Responding);
-        if (Input.GetKeyDown(KeyCode.Alpha8) || Input.GetKeyDown(KeyCode.Keypad8)) SetPhaseFromKeyboard(DTTGazePhase.Reinforced);
-        if (Input.GetKeyDown(KeyCode.Alpha9) || Input.GetKeyDown(KeyCode.Keypad9)) SetPhaseFromKeyboard(DTTGazePhase.OffTask);
-        if (Input.GetKeyDown(KeyCode.Alpha0) || Input.GetKeyDown(KeyCode.Keypad0)) SetPhaseFromKeyboard(DTTGazePhase.Avoidant);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha4) || DesktopInputBridge.GetKeyDown(KeyCode.Keypad4)) SetPhaseFromKeyboard(DTTGazePhase.TrialIdle);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha5) || DesktopInputBridge.GetKeyDown(KeyCode.Keypad5)) SetPhaseFromKeyboard(DTTGazePhase.StimulusPresented);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha6) || DesktopInputBridge.GetKeyDown(KeyCode.Keypad6)) SetPhaseFromKeyboard(DTTGazePhase.Prompted);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha7) || DesktopInputBridge.GetKeyDown(KeyCode.Keypad7)) SetPhaseFromKeyboard(DTTGazePhase.Responding);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha8) || DesktopInputBridge.GetKeyDown(KeyCode.Keypad8)) SetPhaseFromKeyboard(DTTGazePhase.Reinforced);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha9) || DesktopInputBridge.GetKeyDown(KeyCode.Keypad9)) SetPhaseFromKeyboard(DTTGazePhase.OffTask);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha0) || DesktopInputBridge.GetKeyDown(KeyCode.Keypad0)) SetPhaseFromKeyboard(DTTGazePhase.Avoidant);
     }
 
     void OnEnable()
@@ -195,7 +195,7 @@ public class DTTChildGazeSimulator : MonoBehaviour
     {
         for (int i = 0; i < Mathf.Min(9, RegisteredSimulators.Count); i++)
         {
-            if (Input.GetKeyDown(KeyCode.Alpha1 + i) || Input.GetKeyDown(KeyCode.Keypad1 + i))
+            if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha1 + i) || DesktopInputBridge.GetKeyDown(KeyCode.Keypad1 + i))
             {
                 SelectChild(i);
             }

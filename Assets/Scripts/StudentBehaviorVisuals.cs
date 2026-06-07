@@ -21,7 +21,15 @@ public class StudentBehaviorVisuals : MonoBehaviour
     public string displayName = "";
 
     [Tooltip("World-space height offset above the avatar root for the label.")]
-    public float labelHeightOffset = 1.9f;
+    public float labelHeightOffset = 1.35f;
+
+    [Header("VR World Label")]
+    public bool useWorldSpaceLabel = true;
+    public float worldLabelScale = 0.2f;
+    public float worldBehaviorYOffset = 0.12f;
+    public float worldArrowYOffset = 0.42f;
+    public float worldLabelMaxDistance = 18f;
+    public string selectedArrowText = "▼";
 
     [Header("Colors")]
     public Color idleColor      = new Color(0.85f, 0.85f, 0.85f, 0.7f);
@@ -39,6 +47,10 @@ public class StudentBehaviorVisuals : MonoBehaviour
     GUIStyle _behaviorStyle;
     GUIStyle _arrowStyle;
     bool     _stylesReady;
+    Transform _worldLabelRoot;
+    TextMesh _worldNameText;
+    TextMesh _worldBehaviorText;
+    TextMesh _worldArrowText;
 
     void Awake()
     {
@@ -58,6 +70,8 @@ public class StudentBehaviorVisuals : MonoBehaviour
         // Keep a fresh reference in case the demo controller was created after us
         if (_demo == null)
             _demo = FindObjectOfType<BehaviorDemoController>();
+
+        UpdateWorldSpaceLabel();
     }
 
     // ─── Rendering ───────────────────────────────────────────
@@ -163,5 +177,95 @@ public class StudentBehaviorVisuals : MonoBehaviour
         };
 
         _stylesReady = true;
+    }
+
+    void UpdateWorldSpaceLabel()
+    {
+        if (!useWorldSpaceLabel)
+        {
+            if (_worldLabelRoot != null) _worldLabelRoot.gameObject.SetActive(false);
+            return;
+        }
+
+        Camera camera = Camera.main;
+        if (camera == null) return;
+
+        EnsureWorldSpaceLabel();
+        if (_worldLabelRoot == null) return;
+
+        float distSq = (camera.transform.position - transform.position).sqrMagnitude;
+        bool inRange = distSq <= worldLabelMaxDistance * worldLabelMaxDistance;
+        _worldLabelRoot.gameObject.SetActive(inRange);
+        if (!inRange) return;
+
+        _worldLabelRoot.localScale = Vector3.one * worldLabelScale;
+
+        bool isSelected = IsBehaviorDemoSelected() || IsDTTSelected();
+        bool hasBehavior = _pba != null && _pba.IsBehaviorActive;
+        string behaviorName = _pba != null ? _pba.CurrentBehaviorName : "";
+        Color nameCol = isSelected ? selectedColor : (hasBehavior ? behaviorColor : idleColor);
+
+        _worldLabelRoot.position = transform.position + Vector3.up * labelHeightOffset;
+        Vector3 toCamera = _worldLabelRoot.position - camera.transform.position;
+        if (toCamera.sqrMagnitude > 0.0001f)
+        {
+            _worldLabelRoot.rotation = Quaternion.LookRotation(toCamera.normalized, Vector3.up);
+        }
+
+        _worldNameText.text = displayName;
+        _worldNameText.color = nameCol;
+
+        _worldBehaviorText.text = hasBehavior && !string.IsNullOrEmpty(behaviorName) ? behaviorName : "";
+        _worldBehaviorText.color = BehaviorTagColor(behaviorName);
+
+        _worldArrowText.text = isSelected ? selectedArrowText : "";
+        _worldArrowText.color = selectedColor;
+    }
+
+    void EnsureWorldSpaceLabel()
+    {
+        if (_worldLabelRoot != null) return;
+
+        GameObject root = new GameObject("Student World Label");
+        root.transform.SetParent(transform, false);
+        root.transform.localScale = Vector3.one * worldLabelScale;
+        _worldLabelRoot = root.transform;
+
+        _worldNameText = CreateWorldText("Name", Vector3.zero, 42, TextAnchor.MiddleCenter);
+        _worldBehaviorText = CreateWorldText("Behavior", Vector3.up * worldBehaviorYOffset, 28, TextAnchor.MiddleCenter);
+        _worldArrowText = CreateWorldText("Selected Arrow", Vector3.up * worldArrowYOffset, 44, TextAnchor.MiddleCenter);
+    }
+
+    TextMesh CreateWorldText(string objectName, Vector3 localPosition, int fontSize, TextAnchor anchor)
+    {
+        GameObject textObject = new GameObject(objectName);
+        textObject.transform.SetParent(_worldLabelRoot, false);
+        textObject.transform.localPosition = localPosition;
+        textObject.transform.localRotation = Quaternion.identity;
+        textObject.transform.localScale = Vector3.one;
+
+        TextMesh textMesh = textObject.AddComponent<TextMesh>();
+        textMesh.anchor = anchor;
+        textMesh.alignment = TextAlignment.Center;
+        textMesh.characterSize = 0.1f;
+        textMesh.fontSize = fontSize;
+        textMesh.richText = false;
+
+        Font builtInFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (builtInFont == null)
+        {
+            builtInFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        }
+        if (builtInFont != null)
+        {
+            textMesh.font = builtInFont;
+            Renderer renderer = textObject.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = builtInFont.material;
+            }
+        }
+
+        return textMesh;
     }
 }

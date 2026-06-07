@@ -6,16 +6,21 @@ using UnityEngine.XR;
 /// <summary>
 /// Direct Quest locomotion fallback that does not require XR Interaction Toolkit input actions.
 /// Attach to XR Origin. Left stick moves, right stick snap-turns.
+/// On Quest left controller, Y moves up and X moves down.
 /// </summary>
 public class QuestThumbstickLocomotion : MonoBehaviour
 {
     public XROrigin xrOrigin;
     public XRNode moveHand = XRNode.LeftHand;
     public XRNode turnHand = XRNode.RightHand;
+    [Tooltip("Quest left hand: primaryButton is X, secondaryButton is Y.")]
+    public XRNode verticalMoveHand = XRNode.LeftHand;
     public float moveSpeed = 1.8f;
+    public float verticalMoveSpeed = 1.2f;
     public float deadzone = 0.18f;
     public float snapTurnDegrees = 45f;
     public float snapTurnCooldown = 0.35f;
+    public bool enableVerticalMoveButtons = true;
 
     private readonly List<InputDevice> devices = new List<InputDevice>();
     private float nextTurnTime;
@@ -38,6 +43,11 @@ public class QuestThumbstickLocomotion : MonoBehaviour
             Move(moveAxis);
         }
 
+        if (enableVerticalMoveButtons)
+        {
+            MoveVertically(ReadVerticalMoveDirection());
+        }
+
         Vector2 turnAxis = ReadPrimary2DAxis(turnHand);
         if (Mathf.Abs(turnAxis.x) > 0.75f && Time.time >= nextTurnTime)
         {
@@ -55,6 +65,13 @@ public class QuestThumbstickLocomotion : MonoBehaviour
         Vector3 right = Vector3.ProjectOnPlane(head.right, Vector3.up).normalized;
         Vector3 delta = (forward * axis.y + right * axis.x) * (moveSpeed * Time.deltaTime);
         transform.position += delta;
+    }
+
+    private void MoveVertically(float direction)
+    {
+        if (Mathf.Approximately(direction, 0f)) return;
+
+        transform.position += Vector3.up * (direction * verticalMoveSpeed * Time.deltaTime);
     }
 
     private void SnapTurn(float direction)
@@ -85,6 +102,22 @@ public class QuestThumbstickLocomotion : MonoBehaviour
         return device.isValid && device.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 axis)
             ? axis
             : Vector2.zero;
+    }
+
+    private float ReadVerticalMoveDirection()
+    {
+        devices.Clear();
+        InputDevices.GetDevicesAtXRNode(verticalMoveHand, devices);
+        if (devices.Count == 0) return 0f;
+
+        InputDevice device = devices[0];
+        if (!device.isValid) return 0f;
+
+        bool xPressed = device.TryGetFeatureValue(CommonUsages.primaryButton, out bool primaryPressed) && primaryPressed;
+        bool yPressed = device.TryGetFeatureValue(CommonUsages.secondaryButton, out bool secondaryPressed) && secondaryPressed;
+
+        if (yPressed == xPressed) return 0f;
+        return yPressed ? 1f : -1f;
     }
 
     private static bool ShouldUseXrInput()

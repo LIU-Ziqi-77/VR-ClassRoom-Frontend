@@ -12,13 +12,20 @@ public class ClassroomItemHandle : MonoBehaviour
     public ClassroomScenarioController scenarioController;
 
     private UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable grab;
+    private DTTTeachingAid dttTeachingAid;
 
     void Awake()
     {
         grab = GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+        dttTeachingAid = GetComponent<DTTTeachingAid>();
         if (scenarioController == null)
         {
             scenarioController = FindObjectOfType<ClassroomScenarioController>();
+        }
+
+        if (dttTeachingAid != null && dttTeachingAid.TryGetClassroomItemType(out ClassroomItemType mappedType))
+        {
+            itemType = mappedType;
         }
     }
 
@@ -34,10 +41,14 @@ public class ClassroomItemHandle : MonoBehaviour
 
     private void OnGrabbed(SelectEnterEventArgs args)
     {
+        if (dttTeachingAid != null && DTTTeachingAidManager.Instance != null)
+        {
+            DTTTeachingAidManager.Instance.NotifyAidGrabbed(dttTeachingAid);
+        }
+
         if (scenarioController != null)
         {
             scenarioController.SetCurrentItem(itemType);
         }
     }
 }
-

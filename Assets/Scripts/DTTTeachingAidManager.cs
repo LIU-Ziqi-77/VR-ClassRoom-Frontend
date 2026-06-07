@@ -9,6 +9,7 @@ public class DTTTeachingAidManager : MonoBehaviour
     public List<DTTTeachingAid> teachingAids = new List<DTTTeachingAid>();
     public DTTTeachingAid selectedAid;
     public DTTTeachingAid heldAid;
+    public ClassroomScenarioController scenarioController;
 
     [Header("Target Student")]
     public DTTTargetStudentMarker selectedStudent;
@@ -26,6 +27,10 @@ public class DTTTeachingAidManager : MonoBehaviour
         }
 
         Instance = this;
+        if (scenarioController == null)
+        {
+            scenarioController = FindObjectOfType<ClassroomScenarioController>();
+        }
         RefreshTeachingAids();
     }
 
@@ -70,6 +75,7 @@ public class DTTTeachingAidManager : MonoBehaviour
         if (selectedAid != null)
         {
             selectedAid.isSelected = true;
+            SyncScenarioCurrentItem(selectedAid);
             Debug.Log($"[DTT] Selected teaching aid: {selectedAid.displayName}");
         }
     }
@@ -145,7 +151,16 @@ public class DTTTeachingAidManager : MonoBehaviour
 
         heldAid = selectedAid;
         heldAid.BeginHold();
+        SyncScenarioCurrentItem(heldAid);
         Debug.Log($"[DTT] Holding teaching aid: {heldAid.displayName}");
+    }
+
+    public void NotifyAidGrabbed(DTTTeachingAid aid)
+    {
+        if (aid == null) return;
+
+        SelectAid(aid);
+        SyncScenarioCurrentItem(aid);
     }
 
     public void UpdateHeldAid(Transform holdAnchor)
@@ -163,5 +178,22 @@ public class DTTTeachingAidManager : MonoBehaviour
         heldAid.EndHold();
         Debug.Log($"[DTT] Released teaching aid: {heldAid.displayName}");
         heldAid = null;
+    }
+
+    private void SyncScenarioCurrentItem(DTTTeachingAid aid)
+    {
+        if (aid == null) return;
+
+        if (scenarioController == null)
+        {
+            scenarioController = FindObjectOfType<ClassroomScenarioController>();
+        }
+
+        if (scenarioController == null) return;
+
+        if (aid.TryGetClassroomItemType(out ClassroomItemType itemType))
+        {
+            scenarioController.SetCurrentItem(itemType);
+        }
     }
 }

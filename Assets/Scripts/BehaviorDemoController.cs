@@ -77,6 +77,9 @@ public class BehaviorDemoController : MonoBehaviour
 
     [Header("State")]
     [SerializeField] int selectedIndex;
+    [Tooltip("Prevents WASD camera movement from also triggering W/A/D behavior shortcuts.")]
+    public bool suppressKeyboardShortcutsDuringCameraControl = true;
+    public float cameraShortcutSuppressionGrace = 0.2f;
 
     /// <summary>Exposed so StudentBehaviorVisuals can read the current selection.</summary>
     public int SelectedIndex => selectedIndex;
@@ -182,40 +185,47 @@ public class BehaviorDemoController : MonoBehaviour
     {
         if (students.Count == 0) return;
 
-        // Skip behavior shortcuts while right-mouse is held (camera mode)
-        if (Input.GetMouseButton(1)) return;
+        if (ShouldSuppressKeyboardShortcutsForCameraControl()) return;
 
         for (int i = 0; i < Mathf.Min(9, students.Count); i++)
         {
-            if (Input.GetKeyDown(KeyCode.Alpha1 + i))
+            if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha1 + i))
             {
                 SelectStudentIndex(i);
             }
         }
 
-        if (Input.GetKeyDown(KeyCode.Tab))
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Tab))
         {
             SelectStudentIndex((selectedIndex + 1) % students.Count);
         }
 
-        if (Input.GetKeyDown(KeyCode.Q)) DoTrigger("Speak",           TriggerSpeak);
-        if (Input.GetKeyDown(KeyCode.W)) DoTrigger("RaiseHand",       TriggerRaiseHand);
-        if (Input.GetKeyDown(KeyCode.A)) DoTrigger("AskQuestion",     TriggerAskQuestion);
-        if (Input.GetKeyDown(KeyCode.P)) DoTrigger("Clap",            TriggerClap);
-        if (Input.GetKeyDown(KeyCode.N)) DoTrigger("TouchNose",       TriggerTouchNose);
-        if (Input.GetKeyDown(KeyCode.E)) DoTrigger("LieDown",         TriggerLieDown);
-        if (Input.GetKeyDown(KeyCode.D)) DoTrigger("Distracted",      TriggerDistracted);
-        if (Input.GetKeyDown(KeyCode.C)) DoTrigger("TalkClassmate",   TriggerTalkToClassmate);
-        if (Input.GetKeyDown(KeyCode.L)) DoTrigger("LeaveSeat",       TriggerLeaveSeat);
-        if (Input.GetKeyDown(KeyCode.R)) DoTrigger("TakeNotes",       TriggerTakeNotes);
-        if (Input.GetKeyDown(KeyCode.T)) DoTrigger("HitDesk",         TriggerHitDesk);
-        if (Input.GetKeyDown(KeyCode.Y)) DoTrigger("Scream",          TriggerScream);
-        if (Input.GetKeyDown(KeyCode.U)) DoTrigger("Push",            TriggerPushClassmate);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Q)) DoTrigger("Speak",           TriggerSpeak);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.W)) DoTrigger("RaiseHand",       TriggerRaiseHand);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.A)) DoTrigger("AskQuestion",     TriggerAskQuestion);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.P)) DoTrigger("Clap",            TriggerClap);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.N)) DoTrigger("TouchNose",       TriggerTouchNose);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.E)) DoTrigger("LieDown",         TriggerLieDown);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.D)) DoTrigger("Distracted",      TriggerDistracted);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.C)) DoTrigger("TalkClassmate",   TriggerTalkToClassmate);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.L)) DoTrigger("LeaveSeat",       TriggerLeaveSeat);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.R)) DoTrigger("TakeNotes",       TriggerTakeNotes);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.T)) DoTrigger("HitDesk",         TriggerHitDesk);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.Y)) DoTrigger("Scream",          TriggerScream);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.U)) DoTrigger("Push",            TriggerPushClassmate);
 
-        if (Input.GetKeyDown(KeyCode.S)) { StopCurrent(); _lastAction = "Stop"; }
-        if (Input.GetKeyDown(KeyCode.X)) { StopAll(); _lastAction = "StopAll"; }
-        if (Input.GetKeyDown(KeyCode.H)) PrintHelp();
-        if (Input.GetKeyDown(KeyCode.F9)) { DiscoverStudents(); LogStudentInventory(); }
+        if (DesktopInputBridge.GetKeyDown(KeyCode.S)) { StopCurrent(); _lastAction = "Stop"; }
+        if (DesktopInputBridge.GetKeyDown(KeyCode.X)) { StopAll(); _lastAction = "StopAll"; }
+        if (DesktopInputBridge.GetKeyDown(KeyCode.H)) PrintHelp();
+        if (DesktopInputBridge.GetKeyDown(KeyCode.F9)) { DiscoverStudents(); LogStudentInventory(); }
+    }
+
+    private bool ShouldSuppressKeyboardShortcutsForCameraControl()
+    {
+        if (!suppressKeyboardShortcutsDuringCameraControl) return false;
+
+        return DesktopInputBridge.GetMouseButton(1) ||
+               DemoCameraController.AnyCameraSuppressesBehaviorShortcuts(cameraShortcutSuppressionGrace);
     }
 
     ProceduralBehaviorAnimator CurrentPBA

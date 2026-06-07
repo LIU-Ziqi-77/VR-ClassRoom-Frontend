@@ -19,6 +19,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
     public float rayDistance = 12f;
     public LayerMask raycastMask = ~0;
     public bool drawDebugRay = true;
+    public bool selectThroughNonDTTObjects = true;
     public bool selectThroughNonDTTObjectsForDesktopTesting = true;
 
     [Header("XR Input")]
@@ -189,7 +190,11 @@ public class DTTTeacherInteractionController : MonoBehaviour
                 return true;
             }
 
-            if (!selectThroughNonDTTObjectsForDesktopTesting || !usingDesktopRayOrigin)
+            bool canKeepSearching =
+                selectThroughNonDTTObjects ||
+                (selectThroughNonDTTObjectsForDesktopTesting && usingDesktopRayOrigin);
+
+            if (!canKeepSearching)
             {
                 selectedHit = hit;
                 return false;
@@ -243,7 +248,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
             controllerDevice.TryGetFeatureValue(CommonUsages.triggerButton, out pressed);
         }
 
-        if (keyboardFallback && Input.GetKeyDown(selectKey))
+        if (keyboardFallback && DesktopInputBridge.GetKeyDown(selectKey))
         {
             pressed = true;
         }
@@ -262,7 +267,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
             controllerDevice.TryGetFeatureValue(CommonUsages.gripButton, out pressed);
         }
 
-        if (keyboardFallback && Input.GetKeyDown(holdKey))
+        if (keyboardFallback && DesktopInputBridge.GetKeyDown(holdKey))
         {
             pressed = true;
         }

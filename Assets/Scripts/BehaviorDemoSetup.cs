@@ -27,6 +27,8 @@ public class BehaviorDemoSetup : MonoBehaviour
     public bool disableOldTestControllers = true;
     public bool randomizePitch = true;
     public AnimationClip clappingClip;
+    [Tooltip("Fallback runtime names if a student is not one of the Ele_student prefabs.")]
+    public string[] studentDisplayNames = { "可可", "李奥", "安娜" };
 
     [Header("Avatar Appearance")]
     [Tooltip("Replace flower-head avatars with clones of good-looking ones at runtime")]
@@ -51,22 +53,24 @@ public class BehaviorDemoSetup : MonoBehaviour
 
         // Step 1: Find VRM avatars
         var students = new List<ProceduralBehaviorAnimator>();
-        var proxies = FindObjectsOfType<VRMBlendShapeProxy>(includeInactive);
-        Debug.Log($"[BehaviorDemoSetup] Step 1: Found {proxies.Length} VRMBlendShapeProxy in scene");
+        var proxies = new List<VRMBlendShapeProxy>(FindObjectsOfType<VRMBlendShapeProxy>(includeInactive));
+        proxies.Sort((a, b) => string.CompareOrdinal(a.gameObject.name, b.gameObject.name));
+        Debug.Log($"[BehaviorDemoSetup] Step 1: Found {proxies.Count} VRMBlendShapeProxy in scene");
 
-        if (proxies.Length == 0)
+        if (proxies.Count == 0)
         {
             Debug.LogError("[BehaviorDemoSetup] FATAL: No VRMBlendShapeProxy found!");
             return;
         }
 
         // Step 2: Configure each avatar
-        for (int idx = 0; idx < proxies.Length; idx++)
+        for (int idx = 0; idx < proxies.Count; idx++)
         {
             var proxy = proxies[idx];
             if (proxy == null) continue;
             GameObject go = proxy.gameObject;
-            Debug.Log($"[BehaviorDemoSetup] ── Configuring [{idx}]: {go.name} ──");
+            string originalName = go.name;
+            Debug.Log($"[BehaviorDemoSetup] ── Configuring [{idx}]: {originalName} ──");
 
             Animator humanoidAnim = FindHumanoidAnimator(go);
             if (humanoidAnim == null)
@@ -99,14 +103,17 @@ public class BehaviorDemoSetup : MonoBehaviour
             if (randomizePitch)
                 fss.baseFrequency = Random.Range(140f, 260f);
 
+            string displayName = GetStudentDisplayName(originalName, students.Count);
+            go.name = displayName;
+
             // Visual overlay — overhead label + selection indicator
             var visuals = go.GetComponent<StudentBehaviorVisuals>();
             if (visuals == null)
                 visuals = go.AddComponent<StudentBehaviorVisuals>();
-            visuals.displayName = go.name;
+            visuals.displayName = displayName;
 
             students.Add(pba);
-            Debug.Log($"[BehaviorDemoSetup]   ✓ {go.name} ready");
+            Debug.Log($"[BehaviorDemoSetup]   ✓ {displayName} ready");
         }
 
         // Step 3: BehaviorDemoController
@@ -297,6 +304,26 @@ public class BehaviorDemoSetup : MonoBehaviour
         }
 
         return new Pose(DesktopFallbackCameraPosition, DesktopFallbackCameraRotation);
+    }
+
+    string GetStudentDisplayName(string originalName, int fallbackIndex)
+    {
+        if (!string.IsNullOrEmpty(originalName))
+        {
+            if (originalName.Contains("Ele_student1")) return "可可";
+            if (originalName.Contains("Ele_student2")) return "李奥";
+            if (originalName.Contains("Ele_student3")) return "安娜";
+        }
+
+        if (studentDisplayNames != null &&
+            fallbackIndex >= 0 &&
+            fallbackIndex < studentDisplayNames.Length &&
+            !string.IsNullOrWhiteSpace(studentDisplayNames[fallbackIndex]))
+        {
+            return studentDisplayNames[fallbackIndex];
+        }
+
+        return originalName;
     }
 
     /// VR mode: add XRClassroomLocomotion to the XR Origin.

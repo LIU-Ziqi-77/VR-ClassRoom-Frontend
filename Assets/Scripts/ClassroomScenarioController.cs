@@ -7,7 +7,8 @@ public enum ClassroomItemType
     Cup,
     Pencil,
     Eraser,
-    Ruler
+    Ruler,
+    OpenNotebook
 }
 
 public enum StudentResponseKind
@@ -128,6 +129,8 @@ public class ClassroomScenarioController : MonoBehaviour
                 return "橡皮";
             case ClassroomItemType.Ruler:
                 return "尺子";
+            case ClassroomItemType.OpenNotebook:
+                return "笔记本";
             default:
                 return "这个";
         }
@@ -142,4 +145,3 @@ public class ClassroomScenarioController : MonoBehaviour
         return fallback;
     }
 }
-
