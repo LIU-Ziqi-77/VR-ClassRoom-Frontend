@@ -1,0 +1,8 @@
+/Users/liuziqi/Downloads/VR-main/vrclass_Special_Edu/.utmp/RelWithDebInfo/3o3p1m6n/arm64-v8a/CMakeFiles/edit_cache.dir
+/Users/liuziqi/Downloads/VR-main/vrclass_Special_Edu/.utmp/RelWithDebInfo/3o3p1m6n/arm64-v8a/CMakeFiles/rebuild_cache.dir
+/Users/liuziqi/Downloads/VR-main/vrclass_Special_Edu/.utmp/RelWithDebInfo/3o3p1m6n/arm64-v8a/GameActivity/CMakeFiles/game.dir
+/Users/liuziqi/Downloads/VR-main/vrclass_Special_Edu/.utmp/RelWithDebInfo/3o3p1m6n/arm64-v8a/GameActivity/CMakeFiles/edit_cache.dir
+/Users/liuziqi/Downloads/VR-main/vrclass_Special_Edu/.utmp/RelWithDebInfo/3o3p1m6n/arm64-v8a/GameActivity/CMakeFiles/rebuild_cache.dir
+/Users/liuziqi/Downloads/VR-main/vrclass_Special_Edu/.utmp/RelWithDebInfo/3o3p1m6n/arm64-v8a/FramePacing/CMakeFiles/swappywrapper.dir
+/Users/liuziqi/Downloads/VR-main/vrclass_Special_Edu/.utmp/RelWithDebInfo/3o3p1m6n/arm64-v8a/FramePacing/CMakeFiles/edit_cache.dir
+/Users/liuziqi/Downloads/VR-main/vrclass_Special_Edu/.utmp/RelWithDebInfo/3o3p1m6n/arm64-v8a/FramePacing/CMakeFiles/rebuild_cache.dir
