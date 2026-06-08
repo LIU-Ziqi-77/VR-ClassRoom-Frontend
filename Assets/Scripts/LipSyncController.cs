@@ -35,7 +35,9 @@ public class LipSyncController : MonoBehaviour
     [Header("Lip Sync Settings")]
     public float analysisWindow = 0.016f; // 16ms窗口
     public float minVolumeThreshold = 0.01f;
-    public float maxBlendShapeValue = 1.0f;
+    [Range(0.1f, 1f)] public float maxBlendShapeValue = 0.65f;
+    [Range(0.1f, 1f)] public float jawOpenScale = 0.55f;
+    [Range(0.1f, 1f)] public float mouthShapeScale = 0.75f;
     
     [Header("BlendShape Names")]
     public string aBlendShapeName = "A";
@@ -169,11 +171,7 @@ public class LipSyncController : MonoBehaviour
         frame.oValue = baseOpenness * (0.3f + lowFreq * 0.4f); // 圆嘴
         
         // 确保值在合理范围内
-        frame.aValue = Mathf.Clamp01(frame.aValue);
-        frame.iValue = Mathf.Clamp01(frame.iValue);
-        frame.uValue = Mathf.Clamp01(frame.uValue);
-        frame.eValue = Mathf.Clamp01(frame.eValue);
-        frame.oValue = Mathf.Clamp01(frame.oValue);
+        ApplyMouthScale(frame);
     }
     
     private float GetFrequencyRange(float[] spectrum, int startIndex, int endIndex)
@@ -252,16 +250,25 @@ public class LipSyncController : MonoBehaviour
             float gate = Mathf.PerlinNoise(t * 5.1f, 0.37f) > 0.22f ? 1f : 0.15f;
             data.frames.Add(new LipSyncFrame
             {
-                aValue = Mathf.Clamp01((0.25f + Mathf.Abs(Mathf.Sin(t * 15.7f)) * 0.75f) * gate * maxBlendShapeValue),
-                iValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 10.1f + 1.1f)) * 0.35f * gate * maxBlendShapeValue),
-                uValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 8.3f + 2.2f)) * 0.25f * gate * maxBlendShapeValue),
-                eValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 12.5f + 0.6f)) * 0.3f * gate * maxBlendShapeValue),
-                oValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 9.4f + 2.7f)) * 0.45f * gate * maxBlendShapeValue),
+                aValue = Mathf.Clamp01((0.2f + Mathf.Abs(Mathf.Sin(t * 15.7f)) * 0.55f) * gate * maxBlendShapeValue * jawOpenScale),
+                iValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 10.1f + 1.1f)) * 0.3f * gate * maxBlendShapeValue * mouthShapeScale),
+                uValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 8.3f + 2.2f)) * 0.22f * gate * maxBlendShapeValue * mouthShapeScale),
+                eValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 12.5f + 0.6f)) * 0.26f * gate * maxBlendShapeValue * mouthShapeScale),
+                oValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 9.4f + 2.7f)) * 0.32f * gate * maxBlendShapeValue * jawOpenScale),
                 duration = analysisWindow
             });
         }
 
         return data;
+    }
+
+    private void ApplyMouthScale(LipSyncFrame frame)
+    {
+        frame.aValue = Mathf.Clamp01(frame.aValue * jawOpenScale);
+        frame.iValue = Mathf.Clamp01(frame.iValue * mouthShapeScale);
+        frame.uValue = Mathf.Clamp01(frame.uValue * mouthShapeScale);
+        frame.eValue = Mathf.Clamp01(frame.eValue * mouthShapeScale);
+        frame.oValue = Mathf.Clamp01(frame.oValue * jawOpenScale);
     }
     
     private void SetBlendShapeValues(LipSyncFrame frame)
