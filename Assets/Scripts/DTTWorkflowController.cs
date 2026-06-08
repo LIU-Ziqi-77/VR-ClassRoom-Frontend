@@ -65,6 +65,12 @@ public class DTTWorkflowController : MonoBehaviour
     public bool allowMultipleDistractors = true;
     public bool resetScenarioOnStudentChange = true;
 
+    [Header("Missed Step Recovery")]
+    public bool allowMissedTeacherStepRecovery = true;
+    public float missedTeacherStepTimeoutSeconds = 5f;
+    public float missedResponseTriggerTimeoutSeconds = 20f;
+    public float missedFinalPraiseTimeoutSeconds = 5f;
+
     [Header("Desktop Test Keys")]
     public bool enableKeyboardTesting = true;
     public KeyCode askKey = KeyCode.Q;
@@ -232,47 +238,47 @@ public class DTTWorkflowController : MonoBehaviour
 
         AddStep("1. Select the correct teaching aid", DTTWorkflowEvent.SelectCorrectAid);
         AddStep("2. Pick up / present the teaching aid", DTTWorkflowEvent.HoldAid);
-        AddResponseStep("3. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, GetInitialResponse(scenarioType));
+        AddResponseStep("3. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, GetInitialResponse(scenarioType), true);
 
         if (scenarioType == DTTScenarioType.DirectCorrect)
         {
-            AddStep("4. Praise the student", DTTWorkflowEvent.PositiveReinforcement);
+            AddTeacherStep("4. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds);
             return;
         }
 
-        AddStep("4. Teacher says: 不对哦 / correction", DTTWorkflowEvent.RetryOrCorrection);
+        AddTeacherStep("4. Teacher says: 不对哦 / correction", DTTWorkflowEvent.RetryOrCorrection);
         AddStep("5. Put the teaching aid away", DTTWorkflowEvent.ReleaseAid);
         AddStep("6. Wait 2 seconds", DTTWorkflowEvent.PauseElapsed);
         AddStep("7. Re-present the teaching aid", DTTWorkflowEvent.HoldAid);
-        AddStep("8. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis);
+        AddTeacherStep("8. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis);
 
         if (scenarioType == DTTScenarioType.HalfPromptThenCorrect)
         {
-            AddResponseStep("9. Immediately provide half prompt", DTTWorkflowEvent.HalfPrompt, DTTStudentScriptedResponse.Correct);
+            AddResponseStep("9. Immediately provide half prompt", DTTWorkflowEvent.HalfPrompt, DTTStudentScriptedResponse.Correct, true);
             AddStep("10. Put the teaching aid away without feedback", DTTWorkflowEvent.ReleaseAid);
             AddStep("11. Re-present the teaching aid", DTTWorkflowEvent.HoldAid);
-            AddResponseStep("12. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct);
+            AddResponseStep("12. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct, true);
             AddStep("13. Put the teaching aid away without feedback", DTTWorkflowEvent.ReleaseAid);
-            AddResponseStep("14. Give distractor instruction", DTTWorkflowEvent.Distractor, DTTStudentScriptedResponse.DistractorAction);
+            AddResponseStep("14. Give distractor instruction", DTTWorkflowEvent.Distractor, DTTStudentScriptedResponse.DistractorAction, true);
             AddStep("15. Re-present the teaching aid", DTTWorkflowEvent.HoldAid);
-            AddResponseStep("16. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct);
-            AddStep("17. Praise the student", DTTWorkflowEvent.PositiveReinforcement);
+            AddResponseStep("16. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct, true);
+            AddTeacherStep("17. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds);
             return;
         }
 
-        AddResponseStep("9. Immediately provide half prompt", DTTWorkflowEvent.HalfPrompt, DTTStudentScriptedResponse.Incorrect);
+        AddResponseStep("9. Immediately provide half prompt", DTTWorkflowEvent.HalfPrompt, DTTStudentScriptedResponse.Incorrect, true);
         AddStep("10. Put the teaching aid away without feedback", DTTWorkflowEvent.ReleaseAid);
         AddStep("11. Re-present the teaching aid", DTTWorkflowEvent.HoldAid);
-        AddStep("12. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis);
-        AddResponseStep("13. Immediately provide full prompt", DTTWorkflowEvent.FullPrompt, DTTStudentScriptedResponse.Correct);
+        AddTeacherStep("12. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis);
+        AddResponseStep("13. Immediately provide full prompt", DTTWorkflowEvent.FullPrompt, DTTStudentScriptedResponse.Correct, true);
         AddStep("14. Put the teaching aid away without feedback", DTTWorkflowEvent.ReleaseAid);
         AddStep("15. Re-present the teaching aid", DTTWorkflowEvent.HoldAid);
-        AddResponseStep("16. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct);
+        AddResponseStep("16. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct, true);
         AddStep("17. Put the teaching aid away without feedback", DTTWorkflowEvent.ReleaseAid);
-        AddResponseStep("18. Give distractor instruction", DTTWorkflowEvent.Distractor, DTTStudentScriptedResponse.DistractorAction);
+        AddResponseStep("18. Give distractor instruction", DTTWorkflowEvent.Distractor, DTTStudentScriptedResponse.DistractorAction, true);
         AddStep("19. Re-present the teaching aid", DTTWorkflowEvent.HoldAid);
-        AddResponseStep("20. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct);
-        AddStep("21. Praise the student", DTTWorkflowEvent.PositiveReinforcement);
+        AddResponseStep("20. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct, true);
+        AddTeacherStep("21. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds);
     }
 
     private DTTStudentScriptedResponse GetInitialResponse(DTTScenarioType scenarioType)
@@ -284,12 +290,23 @@ public class DTTWorkflowController : MonoBehaviour
 
     private void AddStep(string label, DTTWorkflowEvent expectedEvent)
     {
-        currentSteps.Add(new DTTWorkflowStep(label, expectedEvent, DTTStudentScriptedResponse.None));
+        currentSteps.Add(new DTTWorkflowStep(label, expectedEvent, DTTStudentScriptedResponse.None, false, 0f, true));
     }
 
-    private void AddResponseStep(string label, DTTWorkflowEvent expectedEvent, DTTStudentScriptedResponse response)
+    private void AddTeacherStep(string label, DTTWorkflowEvent expectedEvent, float autoSkipSeconds = -1f)
     {
-        currentSteps.Add(new DTTWorkflowStep(label, expectedEvent, response));
+        currentSteps.Add(new DTTWorkflowStep(label, expectedEvent, DTTStudentScriptedResponse.None, true, ResolveAutoSkipSeconds(autoSkipSeconds, false), true));
+    }
+
+    private void AddResponseStep(string label, DTTWorkflowEvent expectedEvent, DTTStudentScriptedResponse response, bool canAutoSkip = false, float autoSkipSeconds = -1f)
+    {
+        currentSteps.Add(new DTTWorkflowStep(label, expectedEvent, response, canAutoSkip, ResolveAutoSkipSeconds(autoSkipSeconds, response != DTTStudentScriptedResponse.None), true));
+    }
+
+    private float ResolveAutoSkipSeconds(float autoSkipSeconds, bool isResponseTrigger)
+    {
+        if (autoSkipSeconds > 0f) return autoSkipSeconds;
+        return isResponseTrigger ? missedResponseTriggerTimeoutSeconds : missedTeacherStepTimeoutSeconds;
     }
 
     private void TryAcceptEvent(DTTWorkflowEvent workflowEvent, string rawText = "")
@@ -307,6 +324,17 @@ public class DTTWorkflowController : MonoBehaviour
             return;
         }
 
+        if (allowMissedTeacherStepRecovery && step.ExpectedEvent != workflowEvent)
+        {
+            TrySkipMissedStepsForIncomingEvent(workflowEvent);
+            step = GetCurrentStep();
+            if (step == null)
+            {
+                IgnoreEvent(workflowEvent.ToString(), "scenario completed while recovering from missed steps");
+                return;
+            }
+        }
+
         if (step.ExpectedEvent != workflowEvent)
         {
             IgnoreEvent(workflowEvent.ToString(), $"expected {step.ExpectedEvent}");
@@ -320,10 +348,10 @@ public class DTTWorkflowController : MonoBehaviour
         }
 
         LogEvent($"Step {currentStepIndex + 1} OK: {step.Label}" + (string.IsNullOrEmpty(rawText) ? "" : $" | \"{rawText}\""));
+        StopActiveRoutine();
 
         if (step.Response != DTTStudentScriptedResponse.None)
         {
-            StopActiveRoutine();
             activeRoutine = step.Response == DTTStudentScriptedResponse.DistractorAction
                 ? StartCoroutine(DistractorResponseRoutine())
                 : StartCoroutine(DelayedStudentResponseRoutine(step));
@@ -572,6 +600,13 @@ public class DTTWorkflowController : MonoBehaviour
         if (IsCurrentPhysicalStepAlreadySatisfied(step.ExpectedEvent))
         {
             TryAcceptEvent(step.ExpectedEvent);
+            return;
+        }
+
+        if (allowMissedTeacherStepRecovery && step.CanAutoSkip)
+        {
+            StopActiveRoutine();
+            activeRoutine = StartCoroutine(AutoSkipMissedTeacherStepRoutine(currentStepIndex, step));
         }
     }
 
@@ -583,6 +618,51 @@ public class DTTWorkflowController : MonoBehaviour
         isWaiting = false;
         activeRoutine = null;
         TryAcceptEvent(DTTWorkflowEvent.PauseElapsed);
+    }
+
+    private IEnumerator AutoSkipMissedTeacherStepRoutine(int stepIndex, DTTWorkflowStep step)
+    {
+        float waitSeconds = Mathf.Max(0.1f, step.AutoSkipSeconds);
+        status = $"{GetStudentLabel(activeStudent)} / {activeStudent.scenarioType}\nNext: {step.Label}\nAuto-skip if missed in {waitSeconds:F1}s";
+
+        yield return new WaitForSeconds(waitSeconds);
+
+        if (!allowMissedTeacherStepRecovery || isWaiting || currentStepIndex != stepIndex || GetCurrentStep() != step)
+        {
+            yield break;
+        }
+
+        activeRoutine = null;
+        LogEvent($"Step {stepIndex + 1} MISSED / auto-skipped after {waitSeconds:F1}s: {step.Label}");
+        AdvanceStep();
+    }
+
+    private void TrySkipMissedStepsForIncomingEvent(DTTWorkflowEvent incomingEvent)
+    {
+        while (true)
+        {
+            DTTWorkflowStep step = GetCurrentStep();
+            if (step == null || step.ExpectedEvent == incomingEvent) return;
+            if (!step.CanSkipOnLaterEvent || !HasLaterStepForEvent(incomingEvent)) return;
+
+            StopActiveRoutine();
+            LogEvent($"Step {currentStepIndex + 1} MISSED / skipped because {incomingEvent} was received: {step.Label}");
+            currentStepIndex++;
+            UpdateStatus();
+        }
+    }
+
+    private bool HasLaterStepForEvent(DTTWorkflowEvent incomingEvent)
+    {
+        for (int i = currentStepIndex + 1; i < currentSteps.Count; i++)
+        {
+            if (currentSteps[i].ExpectedEvent == incomingEvent)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void PollManagerSelection()
@@ -902,12 +982,24 @@ public class DTTWorkflowController : MonoBehaviour
         public readonly string Label;
         public readonly DTTWorkflowEvent ExpectedEvent;
         public readonly DTTStudentScriptedResponse Response;
+        public readonly bool CanAutoSkip;
+        public readonly float AutoSkipSeconds;
+        public readonly bool CanSkipOnLaterEvent;
 
-        public DTTWorkflowStep(string label, DTTWorkflowEvent expectedEvent, DTTStudentScriptedResponse response)
+        public DTTWorkflowStep(
+            string label,
+            DTTWorkflowEvent expectedEvent,
+            DTTStudentScriptedResponse response,
+            bool canAutoSkip,
+            float autoSkipSeconds,
+            bool canSkipOnLaterEvent)
         {
             Label = label;
             ExpectedEvent = expectedEvent;
             Response = response;
+            CanAutoSkip = canAutoSkip;
+            AutoSkipSeconds = autoSkipSeconds;
+            CanSkipOnLaterEvent = canSkipOnLaterEvent;
         }
     }
 }
