@@ -1,0 +1,32 @@
+[
+  {
+    "student_id": "Ele_student1",
+    "student_name_zh": "可可",
+    "azure_voice_name": "zh-CN-XiaoxiaoNeural",
+    "source_profile_id": "student_01_xiaoxiao_girl",
+    "pitch": "+7st",
+    "rate": "+4%",
+    "volume": "+0%",
+    "voice_role": "girl student, clear and bright"
+  },
+  {
+    "student_id": "Ele_student2",
+    "student_name_zh": "李奥",
+    "azure_voice_name": "zh-CN-YunjianNeural",
+    "source_profile_id": "student_03_yunjian_boy",
+    "pitch": "+5st",
+    "rate": "+6%",
+    "volume": "+2%",
+    "voice_role": "boy student, direct and active"
+  },
+  {
+    "student_id": "Ele_student3",
+    "student_name_zh": "安娜",
+    "azure_voice_name": "zh-CN-XiaoyiNeural",
+    "source_profile_id": "student_02_xiaoyi_girl",
+    "pitch": "+5st",
+    "rate": "-8%",
+    "volume": "-12%",
+    "voice_role": "girl student, soft and shy"
+  }
+]

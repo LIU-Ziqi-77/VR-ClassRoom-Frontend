@@ -23,6 +23,12 @@ public class LipSyncData
 
 public class LipSyncController : MonoBehaviour
 {
+    private static readonly BlendShapeKey AKey = BlendShapeKey.CreateFromPreset(BlendShapePreset.A);
+    private static readonly BlendShapeKey IKey = BlendShapeKey.CreateFromPreset(BlendShapePreset.I);
+    private static readonly BlendShapeKey UKey = BlendShapeKey.CreateFromPreset(BlendShapePreset.U);
+    private static readonly BlendShapeKey EKey = BlendShapeKey.CreateFromPreset(BlendShapePreset.E);
+    private static readonly BlendShapeKey OKey = BlendShapeKey.CreateFromPreset(BlendShapePreset.O);
+
     [Header("VRM Components")]
     public VRMBlendShapeProxy blendShapeProxy;
     
@@ -43,36 +49,55 @@ public class LipSyncController : MonoBehaviour
     
     void Start()
     {
+        EnsureBlendShapeProxy();
+    }
+
+    public bool EnsureBlendShapeProxy()
+    {
+        if (blendShapeProxy != null) return true;
+
+        blendShapeProxy = GetComponent<VRMBlendShapeProxy>();
         if (blendShapeProxy == null)
         {
-            blendShapeProxy = GetComponent<VRMBlendShapeProxy>();
+            blendShapeProxy = GetComponentInChildren<VRMBlendShapeProxy>();
         }
+        if (blendShapeProxy == null)
+        {
+            blendShapeProxy = GetComponentInParent<VRMBlendShapeProxy>();
+        }
+
+        return blendShapeProxy != null;
     }
     
-    public async Task<LipSyncData> AnalyzeLipSync(AudioClip audioClip)
+    public Task<LipSyncData> AnalyzeLipSync(AudioClip audioClip)
     {
         LipSyncData lipSyncData = new LipSyncData();
         
         if (audioClip == null)
         {
             Debug.LogError("AudioClip is null!");
-            return lipSyncData;
+            return Task.FromResult(lipSyncData);
         }
         
-        // 获取音频数据
-        float[] samples = new float[audioClip.samples];
+        // 获取音频数据。包含所有声道，否则多声道 clip 的口型会变短。
+        float[] samples = new float[audioClip.samples * audioClip.channels];
         audioClip.GetData(samples, 0);
         
-        int samplesPerWindow = Mathf.RoundToInt(audioClip.frequency * analysisWindow);
-        int windowCount = samples.Length / samplesPerWindow;
+        int samplesPerWindow = Mathf.Max(1, Mathf.RoundToInt(audioClip.frequency * analysisWindow) * audioClip.channels);
+        int windowCount = Mathf.Max(1, Mathf.CeilToInt((float)samples.Length / samplesPerWindow));
         
         for (int i = 0; i < windowCount; i++)
         {
             LipSyncFrame frame = new LipSyncFrame();
             
             // 计算当前窗口的音频特征
+            int sourceIndex = i * samplesPerWindow;
+            int sampleLength = Mathf.Min(samplesPerWindow, samples.Length - sourceIndex);
             float[] windowSamples = new float[samplesPerWindow];
-            System.Array.Copy(samples, i * samplesPerWindow, windowSamples, 0, samplesPerWindow);
+            if (sampleLength > 0)
+            {
+                System.Array.Copy(samples, sourceIndex, windowSamples, 0, sampleLength);
+            }
             
             // 分析音频特征
             AnalyzeAudioWindow(windowSamples, frame);
@@ -81,7 +106,7 @@ public class LipSyncController : MonoBehaviour
             lipSyncData.frames.Add(frame);
         }
         
-        return lipSyncData;
+        return Task.FromResult(lipSyncData);
     }
     
     private void AnalyzeAudioWindow(float[] samples, LipSyncFrame frame)
@@ -167,12 +192,7 @@ public class LipSyncController : MonoBehaviour
     
     public IEnumerator PlayWithLipSync(AudioClip audioClip, LipSyncData lipSyncData)
     {
-        if (blendShapeProxy == null)
-        {
-            Debug.LogError("VRMBlendShapeProxy not found!");
-            yield break;
-        }
-        
+        bool hasMouth = EnsureBlendShapeProxy();
         currentAudioClip = audioClip;
         isPlaying = true;
         
@@ -184,7 +204,23 @@ public class LipSyncController : MonoBehaviour
         }
         
         audioSource.clip = audioClip;
+        audioSource.spatialBlend = 1f;
+        audioSource.playOnAwake = false;
         audioSource.Play();
+
+        if (!hasMouth)
+        {
+            Debug.LogWarning($"[LipSync] VRMBlendShapeProxy not found on {name}; playing audio without mouth movement.");
+            yield return new WaitForSeconds(audioClip.length);
+            isPlaying = false;
+            currentAudioClip = null;
+            yield break;
+        }
+
+        if (lipSyncData == null || lipSyncData.frames.Count == 0)
+        {
+            lipSyncData = CreateProceduralLipSyncData(audioClip);
+        }
         
         // 同步唇形动画
         foreach (var frame in lipSyncData.frames)
@@ -203,29 +239,51 @@ public class LipSyncController : MonoBehaviour
         isPlaying = false;
         currentAudioClip = null;
     }
+
+    private LipSyncData CreateProceduralLipSyncData(AudioClip audioClip)
+    {
+        LipSyncData data = new LipSyncData();
+        if (audioClip == null) return data;
+
+        int frameCount = Mathf.Max(1, Mathf.CeilToInt(audioClip.length / Mathf.Max(0.01f, analysisWindow)));
+        for (int i = 0; i < frameCount; i++)
+        {
+            float t = i * analysisWindow;
+            float gate = Mathf.PerlinNoise(t * 5.1f, 0.37f) > 0.22f ? 1f : 0.15f;
+            data.frames.Add(new LipSyncFrame
+            {
+                aValue = Mathf.Clamp01((0.25f + Mathf.Abs(Mathf.Sin(t * 15.7f)) * 0.75f) * gate * maxBlendShapeValue),
+                iValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 10.1f + 1.1f)) * 0.35f * gate * maxBlendShapeValue),
+                uValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 8.3f + 2.2f)) * 0.25f * gate * maxBlendShapeValue),
+                eValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 12.5f + 0.6f)) * 0.3f * gate * maxBlendShapeValue),
+                oValue = Mathf.Clamp01(Mathf.Abs(Mathf.Sin(t * 9.4f + 2.7f)) * 0.45f * gate * maxBlendShapeValue),
+                duration = analysisWindow
+            });
+        }
+
+        return data;
+    }
     
     private void SetBlendShapeValues(LipSyncFrame frame)
     {
         if (blendShapeProxy == null) return;
         
-        // 设置各种唇形BlendShape
-        blendShapeProxy.SetValue(aBlendShapeName, frame.aValue);
-        blendShapeProxy.SetValue(iBlendShapeName, frame.iValue);
-        blendShapeProxy.SetValue(uBlendShapeName, frame.uValue);
-        blendShapeProxy.SetValue(eBlendShapeName, frame.eValue);
-        blendShapeProxy.SetValue(oBlendShapeName, frame.oValue);
+        blendShapeProxy.ImmediatelySetValue(AKey, frame.aValue);
+        blendShapeProxy.ImmediatelySetValue(IKey, frame.iValue);
+        blendShapeProxy.ImmediatelySetValue(UKey, frame.uValue);
+        blendShapeProxy.ImmediatelySetValue(EKey, frame.eValue);
+        blendShapeProxy.ImmediatelySetValue(OKey, frame.oValue);
     }
     
     private void ResetBlendShapes()
     {
         if (blendShapeProxy == null) return;
         
-        // 重置所有唇形BlendShape
-        blendShapeProxy.SetValue(aBlendShapeName, 0f);
-        blendShapeProxy.SetValue(iBlendShapeName, 0f);
-        blendShapeProxy.SetValue(uBlendShapeName, 0f);
-        blendShapeProxy.SetValue(eBlendShapeName, 0f);
-        blendShapeProxy.SetValue(oBlendShapeName, 0f);
+        blendShapeProxy.ImmediatelySetValue(AKey, 0f);
+        blendShapeProxy.ImmediatelySetValue(IKey, 0f);
+        blendShapeProxy.ImmediatelySetValue(UKey, 0f);
+        blendShapeProxy.ImmediatelySetValue(EKey, 0f);
+        blendShapeProxy.ImmediatelySetValue(OKey, 0f);
     }
     
     public void StopLipSync()
@@ -244,4 +302,4 @@ public class LipSyncController : MonoBehaviour
     {
         return isPlaying;
     }
-} 
+}

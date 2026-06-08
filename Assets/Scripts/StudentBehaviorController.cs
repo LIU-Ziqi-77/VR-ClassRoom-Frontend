@@ -55,22 +55,26 @@ public class StudentBehaviorController : MonoBehaviour
     [Header("Student Identity")]
     public string studentId;
     public string studentName;
-    
+
     [Header("VRM Components")]
     public VRMBlendShapeProxy blendShapeProxy;
     public Animator animator;
-    
+
     [Header("Controllers")]
     public LipSyncController lipSyncController;
     public EyeController eyeController;
-    
+
     [Header("Voice Configuration")]
     public StudentVoiceConfig voiceConfig;
-    
+
+    [Header("Local DTT Voice Playback")]
+    [Range(0.5f, 3f)] public float localSpeechGain = 2f;
+    [Range(0f, 1f)] public float localSpeechVolume = 1f;
+
     [Header("Behavior Settings")]
     public float attentionSpan = 10f;
     public float speakingConfidence = 0.8f;
-    
+
     [Header("Animation States")]
     public string idleAnimationName = "Idle";
     public string speakingAnimationName = "Speaking";
@@ -83,58 +87,76 @@ public class StudentBehaviorController : MonoBehaviour
     public string touchTeacherAnimationName = "TouchTeacher";
     public string takeDeskItemAnimationName = "TakeDeskItem";
     public string lieDownAnimationName = "LieDown";
-    
+
     [Header("Animation Triggers")]
     public string screamTriggerName = "Scream";
     public string hitDeskTriggerName = "HitDesk";
     public string pushPeerTriggerName = "PushPeer";
     public string selfHitTriggerName = "SelfHit";
-    
+
     private StudentBehaviorType currentBehavior = StudentBehaviorType.Idle;
     private bool isSpeaking = false;
     private bool isListening = false;
     private Coroutine currentBehaviorCoroutine;
-    
+
     void Start()
     {
         InitializeComponents();
         StartIdleBehavior();
     }
-    
+
     private void InitializeComponents()
     {
         if (blendShapeProxy == null)
+        {
             blendShapeProxy = GetComponent<VRMBlendShapeProxy>();
-        
+            if (blendShapeProxy == null)
+                blendShapeProxy = GetComponentInChildren<VRMBlendShapeProxy>();
+            if (blendShapeProxy == null)
+                blendShapeProxy = GetComponentInParent<VRMBlendShapeProxy>();
+        }
+
         if (animator == null)
             animator = GetComponent<Animator>();
-        
+
         if (lipSyncController == null)
+        {
             lipSyncController = GetComponent<LipSyncController>();
-        
+            if (lipSyncController == null)
+                lipSyncController = GetComponentInChildren<LipSyncController>();
+            if (lipSyncController == null)
+                lipSyncController = GetComponentInParent<LipSyncController>();
+            if (lipSyncController == null)
+                lipSyncController = gameObject.AddComponent<LipSyncController>();
+        }
+
         if (eyeController == null)
             eyeController = GetComponent<EyeController>();
-        
+
         if (lipSyncController != null)
+        {
             lipSyncController.blendShapeProxy = blendShapeProxy;
-        
+            if (lipSyncController.blendShapeProxy == null && lipSyncController.EnsureBlendShapeProxy())
+                blendShapeProxy = lipSyncController.blendShapeProxy;
+        }
+
         if (eyeController != null)
         {
             eyeController.humanoidAnimator = animator;
             eyeController.blendShapeProxy = blendShapeProxy;
         }
     }
-    
+
     public void ProcessCommand(StudentCommand command)
     {
         if (command.studentId != studentId) return;
-        
+
         switch (command.type)
         {
             case CommandType.Speak:
                 _ = SpeakWithLipSync(command.text);
                 break;
-                
+
             case CommandType.LookAt:
                 if (!string.IsNullOrEmpty(command.targetStudentId))
                 {
@@ -145,32 +167,32 @@ public class StudentBehaviorController : MonoBehaviour
                     eyeController.LookAtPosition(command.targetPosition);
                 }
                 break;
-                
+
             case CommandType.Behavior:
                 SetBehavior(command.behaviorType, command.duration);
                 break;
-                
+
             case CommandType.Gesture:
                 PlayGesture(command.behaviorType);
                 break;
-                
+
             case CommandType.Stop:
                 StopCurrentBehavior();
                 break;
         }
     }
-    
+
     public async Task SpeakWithLipSync(string text)
     {
         if (isSpeaking) return;
-        
+
         isSpeaking = true;
         SetBehavior(StudentBehaviorType.Speaking);
-        
+
         try
         {
             AudioClip speechClip = null;
-            
+
             // 使用个性化声音配置
             if (voiceConfig != null)
             {
@@ -183,15 +205,25 @@ public class StudentBehaviorController : MonoBehaviour
                 // 使用默认声音
                 speechClip = await TTSService.Instance.GenerateSpeech(text);
             }
-            
+
             if (speechClip != null)
             {
-                // 分析唇形同步数据
+                InitializeComponents();
+                if (lipSyncController == null)
+                {
+                    Debug.LogWarning($"[{studentName}] LipSyncController missing; speech audio skipped.");
+                    return;
+                }
+
+                AudioSource audioSource = lipSyncController.GetComponent<AudioSource>();
+                if (audioSource != null)
+                {
+                    audioSource.volume = localSpeechVolume;
+                }
+
                 LipSyncData lipSyncData = await lipSyncController.AnalyzeLipSync(speechClip);
-                
-                // 播放音频和唇形同步
                 StartCoroutine(lipSyncController.PlayWithLipSync(speechClip, lipSyncData));
-                
+
                 // 等待播放完成
                 await Task.Delay((int)(speechClip.length * 1000));
             }
@@ -206,46 +238,144 @@ public class StudentBehaviorController : MonoBehaviour
             SetBehavior(StudentBehaviorType.Idle);
         }
     }
-    
+
+    public async Task SpeakAudioClipWithLipSync(AudioClip speechClip, string debugText = "")
+    {
+        if (isSpeaking || speechClip == null) return;
+
+        InitializeComponents();
+        AudioClip playbackClip = ApplyLocalSpeechGain(speechClip);
+        isSpeaking = true;
+        SetBehavior(StudentBehaviorType.Speaking);
+
+        try
+        {
+            if (!string.IsNullOrEmpty(debugText))
+            {
+                Debug.Log($"[{studentName}] Playing local DTT voice clip: {debugText}");
+            }
+
+            if (lipSyncController != null)
+            {
+                AudioSource audioSource = lipSyncController.GetComponent<AudioSource>();
+                if (audioSource != null)
+                {
+                    audioSource.volume = localSpeechVolume;
+                }
+
+                LipSyncData lipSyncData = await lipSyncController.AnalyzeLipSync(playbackClip);
+                StartCoroutine(lipSyncController.PlayWithLipSync(playbackClip, lipSyncData));
+            }
+            else
+            {
+                AudioSource audioSource = GetComponent<AudioSource>();
+                if (audioSource == null)
+                {
+                    audioSource = gameObject.AddComponent<AudioSource>();
+                }
+
+                audioSource.clip = playbackClip;
+                audioSource.spatialBlend = 1f;
+                audioSource.volume = localSpeechVolume;
+                audioSource.Play();
+            }
+
+            await Task.Delay((int)(playbackClip.length * 1000));
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Local speech playback failed: {e.Message}");
+        }
+        finally
+        {
+            if (playbackClip != null && playbackClip != speechClip)
+            {
+                Destroy(playbackClip);
+            }
+
+            isSpeaking = false;
+            SetBehavior(StudentBehaviorType.Idle);
+        }
+    }
+
+    public void SpeakWithFallbackAudio(string text, float duration = 0f)
+    {
+        FallbackSpeechService fallbackSpeech = GetComponent<FallbackSpeechService>();
+        if (fallbackSpeech == null)
+        {
+            fallbackSpeech = gameObject.AddComponent<FallbackSpeechService>();
+        }
+
+        SetBehavior(StudentBehaviorType.Speaking, duration > 0f ? duration : Mathf.Max(1.5f, text.Length * 0.08f));
+        fallbackSpeech.volume = Mathf.Clamp(localSpeechVolume * 0.25f * Mathf.Max(1f, localSpeechGain), 0.05f, 0.5f);
+        fallbackSpeech.Speak(text, duration);
+    }
+
+    private AudioClip ApplyLocalSpeechGain(AudioClip sourceClip)
+    {
+        if (sourceClip == null || localSpeechGain <= 1.01f)
+        {
+            return sourceClip;
+        }
+
+        int sampleCount = sourceClip.samples * sourceClip.channels;
+        float[] samples = new float[sampleCount];
+        sourceClip.GetData(samples, 0);
+
+        for (int i = 0; i < samples.Length; i++)
+        {
+            samples[i] = Mathf.Clamp(samples[i] * localSpeechGain, -1f, 1f);
+        }
+
+        AudioClip boostedClip = AudioClip.Create(
+            $"{sourceClip.name}_gain_{localSpeechGain:F1}",
+            sourceClip.samples,
+            sourceClip.channels,
+            sourceClip.frequency,
+            false);
+        boostedClip.SetData(samples, 0);
+        return boostedClip;
+    }
+
     public void SetBehavior(StudentBehaviorType behavior, float duration = 0f)
     {
         if (currentBehaviorCoroutine != null)
         {
             StopCoroutine(currentBehaviorCoroutine);
         }
-        
+
         currentBehavior = behavior;
-        
+
         switch (behavior)
         {
             case StudentBehaviorType.Idle:
                 PlayIdleAnimation();
                 break;
-                
+
             case StudentBehaviorType.Speaking:
                 PlaySpeakingAnimation();
                 break;
-                
+
             case StudentBehaviorType.Listening:
                 PlayListeningAnimation();
                 break;
-                
+
             case StudentBehaviorType.RaisingHand:
                 PlayRaisingHandAnimation();
                 break;
-                
+
             case StudentBehaviorType.TakingNotes:
                 PlayTakingNotesAnimation();
                 break;
-                
+
             case StudentBehaviorType.LookingAround:
                 StartCoroutine(LookAroundBehavior());
                 break;
-                
+
             case StudentBehaviorType.Confused:
                 PlayConfusedExpression();
                 break;
-                
+
             case StudentBehaviorType.Excited:
                 PlayExcitedExpression();
                 break;
@@ -310,13 +440,13 @@ public class StudentBehaviorController : MonoBehaviour
                 TriggerIfSet(selfHitTriggerName);
                 break;
         }
-        
+
         if (duration > 0)
         {
             currentBehaviorCoroutine = StartCoroutine(ResetBehaviorAfterDuration(duration));
         }
     }
-    
+
     public void PlayGesture(StudentBehaviorType gestureType)
     {
         switch (gestureType)
@@ -324,34 +454,34 @@ public class StudentBehaviorController : MonoBehaviour
             case StudentBehaviorType.RaisingHand:
                 PlayRaisingHandAnimation();
                 break;
-                
+
             case StudentBehaviorType.TakingNotes:
                 PlayTakingNotesAnimation();
                 break;
         }
     }
-    
+
     public void StopCurrentBehavior()
     {
         if (currentBehaviorCoroutine != null)
         {
             StopCoroutine(currentBehaviorCoroutine);
         }
-        
+
         if (isSpeaking)
         {
             lipSyncController.StopLipSync();
             isSpeaking = false;
         }
-        
+
         SetBehavior(StudentBehaviorType.Idle);
     }
-    
+
     private void StartIdleBehavior()
     {
         SetBehavior(StudentBehaviorType.Idle);
     }
-    
+
     private void PlayIdleAnimation()
     {
         if (animator != null)
@@ -359,7 +489,7 @@ public class StudentBehaviorController : MonoBehaviour
             animator.Play(idleAnimationName);
         }
     }
-    
+
     private void PlaySpeakingAnimation()
     {
         if (animator != null)
@@ -367,18 +497,21 @@ public class StudentBehaviorController : MonoBehaviour
             animator.Play(speakingAnimationName);
         }
     }
-    
+
     private void PlayListeningAnimation()
     {
         if (animator != null)
         {
             animator.Play(listeningAnimationName);
         }
-        
+
         // 看向教师
-        eyeController.LookAtTeacher();
+        if (eyeController != null)
+        {
+            eyeController.LookAtTeacher();
+        }
     }
-    
+
     private void PlayRaisingHandAnimation()
     {
         if (animator != null)
@@ -386,7 +519,7 @@ public class StudentBehaviorController : MonoBehaviour
             animator.Play(raisingHandAnimationName);
         }
     }
-    
+
     private void PlayTakingNotesAnimation()
     {
         // 实现做笔记的动画
@@ -411,7 +544,7 @@ public class StudentBehaviorController : MonoBehaviour
             animator.SetTrigger(triggerName);
         }
     }
-    
+
     private IEnumerator LookAroundBehavior()
     {
         while (currentBehavior == StudentBehaviorType.LookingAround)
@@ -419,12 +552,15 @@ public class StudentBehaviorController : MonoBehaviour
             // 随机看向不同方向
             Vector3 randomDirection = Random.onUnitSphere;
             Vector3 lookTarget = transform.position + randomDirection * 5f;
-            eyeController.LookAtPosition(lookTarget);
-            
+            if (eyeController != null)
+            {
+                eyeController.LookAtPosition(lookTarget);
+            }
+
             yield return new WaitForSeconds(Random.Range(2f, 5f));
         }
     }
-    
+
     private void PlayConfusedExpression()
     {
         if (blendShapeProxy != null)
@@ -432,7 +568,7 @@ public class StudentBehaviorController : MonoBehaviour
             blendShapeProxy.SetValue("Confused", 1f);
         }
     }
-    
+
     private void PlayExcitedExpression()
     {
         if (blendShapeProxy != null)
@@ -440,50 +576,50 @@ public class StudentBehaviorController : MonoBehaviour
             blendShapeProxy.SetValue("Happy", 1f);
         }
     }
-    
+
     private IEnumerator ResetBehaviorAfterDuration(float duration)
     {
         yield return new WaitForSeconds(duration);
         SetBehavior(StudentBehaviorType.Idle);
     }
-    
+
     public void LookAtTeacher()
     {
         eyeController.LookAtTeacher();
     }
-    
+
     public void LookAtStudent(string targetStudentId)
     {
         eyeController.LookAtStudent(targetStudentId);
     }
-    
+
     public void LookAtPosition(Vector3 position)
     {
         eyeController.LookAtPosition(position);
     }
-    
+
     public void ResetEyeDirection()
     {
         eyeController.ResetEyeDirection();
     }
-    
+
     public bool IsSpeaking()
     {
         return isSpeaking;
     }
-    
+
     public StudentBehaviorType GetCurrentBehavior()
     {
         return currentBehavior;
     }
-    
+
     public string GetStudentId()
     {
         return studentId;
     }
-    
+
     public string GetStudentName()
     {
         return studentName;
     }
-} 
+}

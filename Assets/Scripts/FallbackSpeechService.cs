@@ -35,7 +35,13 @@ public class FallbackSpeechService : MonoBehaviour
         audioSource.loop = false;
 
         if (blendShapeProxy == null)
+        {
             blendShapeProxy = GetComponent<VRMBlendShapeProxy>();
+            if (blendShapeProxy == null)
+                blendShapeProxy = GetComponentInChildren<VRMBlendShapeProxy>();
+            if (blendShapeProxy == null)
+                blendShapeProxy = GetComponentInParent<VRMBlendShapeProxy>();
+        }
         if (proceduralAnimator == null)
             proceduralAnimator = GetComponent<ProceduralBehaviorAnimator>();
     }

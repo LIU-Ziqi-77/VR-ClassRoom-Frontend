@@ -1,0 +1,32 @@
+[
+  {
+    "voice_name": "zh-CN-XiaoxiaoNeural",
+    "locale": "zh-CN",
+    "gender": "Female",
+    "notes": "Common Mandarin neural voice; useful baseline for child-like pitch/rate tests."
+  },
+  {
+    "voice_name": "zh-CN-XiaoyiNeural",
+    "locale": "zh-CN",
+    "gender": "Female",
+    "notes": "Alternative female Mandarin voice; worth comparing for softer student profiles."
+  },
+  {
+    "voice_name": "zh-CN-XiaohanNeural",
+    "locale": "zh-CN",
+    "gender": "Female",
+    "notes": "Female Mandarin voice candidate for expressive classroom utterances."
+  },
+  {
+    "voice_name": "zh-CN-YunxiNeural",
+    "locale": "zh-CN",
+    "gender": "Male",
+    "notes": "Male Mandarin candidate; compare carefully because prosody may read older than a child."
+  },
+  {
+    "voice_name": "zh-CN-YunjianNeural",
+    "locale": "zh-CN",
+    "gender": "Male",
+    "notes": "Male Mandarin baseline candidate for lower-pitched student variants."
+  }
+]
