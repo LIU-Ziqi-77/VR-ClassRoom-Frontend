@@ -86,6 +86,9 @@ public class DTTWorkflowController : MonoBehaviour
     public bool logIgnoredEvents = true;
     public List<string> eventLog = new List<string>();
 
+    [Header("Desktop Monitor")]
+    public bool autoCreateMonitorReporter = true;
+
     private readonly List<DTTWorkflowStep> currentSteps = new List<DTTWorkflowStep>();
     private readonly List<DTTTeacherIntent> pendingDistractorIntents = new List<DTTTeacherIntent>();
     private readonly List<DTTTeacherIntent> completedDistractorIntents = new List<DTTTeacherIntent>();
@@ -100,6 +103,7 @@ public class DTTWorkflowController : MonoBehaviour
     private DTTTeacherIntent lastDistractorIntent = DTTTeacherIntent.Unknown;
     private bool collectingDistractors;
     private GUIStyle statusStyle;
+    private DTTMonitorReporter monitorReporter;
 
     void Awake()
     {
@@ -109,6 +113,7 @@ public class DTTWorkflowController : MonoBehaviour
         }
 
         AutoBindMissingReferences();
+        EnsureMonitorReporter();
     }
 
     void Start()
@@ -131,6 +136,11 @@ public class DTTWorkflowController : MonoBehaviour
         if (message == null) return;
 
         DTTTeacherIntent intent = DTTTeacherIntentParser.Parse(message.intent);
+        if (monitorReporter != null)
+        {
+            monitorReporter.SendVoiceIntent(message, intent);
+        }
+
         if (intent == DTTTeacherIntent.SelectStudent || !string.IsNullOrEmpty(message.student_id) || !string.IsNullOrEmpty(message.student_name))
         {
             if (SelectStudentByVoice(message.student_id, message.student_name, message.text))
@@ -910,6 +920,19 @@ public class DTTWorkflowController : MonoBehaviour
         }
     }
 
+    private void EnsureMonitorReporter()
+    {
+        if (!autoCreateMonitorReporter) return;
+
+        monitorReporter = GetComponent<DTTMonitorReporter>();
+        if (monitorReporter == null)
+        {
+            monitorReporter = gameObject.AddComponent<DTTMonitorReporter>();
+        }
+
+        monitorReporter.workflowController = this;
+    }
+
     private void StopActiveRoutine()
     {
         if (activeRoutine != null)
@@ -928,6 +951,10 @@ public class DTTWorkflowController : MonoBehaviour
         string line = $"[{Time.time:F1}] {message}";
         eventLog.Add(line);
         Debug.Log("[DTT Workflow] " + line);
+        if (monitorReporter != null)
+        {
+            monitorReporter.SendWorkflowLog(line);
+        }
     }
 
     private void IgnoreEvent(string eventName, string reason)
@@ -936,6 +963,37 @@ public class DTTWorkflowController : MonoBehaviour
         {
             Debug.Log($"[DTT Workflow] Ignored {eventName}: {reason}");
         }
+        if (monitorReporter != null)
+        {
+            monitorReporter.SendIgnoredEvent(eventName, reason);
+        }
+    }
+
+    public DTTWorkflowMonitorSnapshot BuildMonitorSnapshot()
+    {
+        DTTWorkflowStep step = GetCurrentStep();
+        DTTTeachingAid selectedAid = teachingAidManager != null ? teachingAidManager.selectedAid : null;
+        DTTTeachingAid heldAid = teachingAidManager != null ? teachingAidManager.heldAid : null;
+
+        return new DTTWorkflowMonitorSnapshot
+        {
+            type = "status",
+            status = status,
+            active_student = GetStudentLabel(activeStudent),
+            active_student_id = activeStudent != null ? activeStudent.studentId : "",
+            scenario = activeStudent != null ? activeStudent.scenarioType.ToString() : "",
+            current_step_index = currentStepIndex + 1,
+            step_count = currentSteps.Count,
+            current_step_label = step != null ? step.Label : "",
+            expected_event = step != null ? step.ExpectedEvent.ToString() : "",
+            is_waiting = isWaiting,
+            collecting_distractors = collectingDistractors,
+            scenario_complete = activeStudent != null && currentStepIndex >= currentSteps.Count,
+            selected_aid = selectedAid != null ? selectedAid.name : "",
+            held_aid = heldAid != null ? heldAid.name : "",
+            target_item_type = targetItemType.ToString(),
+            event_log_count = eventLog.Count
+        };
     }
 
     private void UpdateStatus()

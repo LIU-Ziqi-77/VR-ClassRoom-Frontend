@@ -109,9 +109,9 @@ public class PPTProjector : MonoBehaviour
 
     void Update()
     {
-        // if (Input.GetKeyDown(KeyCode.N) || Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.PageDown))
+        // if (DesktopInputBridge.GetKeyDown(KeyCode.N) || DesktopInputBridge.GetKeyDown(KeyCode.Space) || DesktopInputBridge.GetKeyDown(KeyCode.PageDown))
         //     NextSlide();
-        if (Input.GetKeyDown(KeyCode.B) || Input.GetKeyDown(KeyCode.PageUp))
+        if (DesktopInputBridge.GetKeyDown(KeyCode.B) || DesktopInputBridge.GetKeyDown(KeyCode.PageUp))
             PreviousSlide();
     }
 

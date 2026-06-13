@@ -128,7 +128,7 @@ public static class HighSchoolClassroomSceneBuilder
         }
 
         GameObject xrOrigin = new GameObject("XR Origin (VR)");
-        xrOrigin.transform.SetPositionAndRotation(new Vector3(470.2f, 0.05f, 186.8f), Quaternion.Euler(0f, 0f, 0f));
+        xrOrigin.transform.SetPositionAndRotation(new Vector3(468.951f, -0.543f, 189.15f), Quaternion.Euler(0f, 160f, 0f));
         xrOrigin.AddComponent<XROrigin>();
 
         GameObject cameraOffset = new GameObject("Camera Offset");
@@ -175,7 +175,7 @@ public static class HighSchoolClassroomSceneBuilder
 
     static void ConfigureCameraForClassroom(Camera camera)
     {
-        camera.transform.localPosition = new Vector3(0f, 1.6f, 0f);
+        camera.transform.localPosition = new Vector3(0f, 1.59f, 0f);
         camera.transform.localRotation = Quaternion.identity;
         camera.fieldOfView = 60f;
         camera.nearClipPlane = 0.05f;

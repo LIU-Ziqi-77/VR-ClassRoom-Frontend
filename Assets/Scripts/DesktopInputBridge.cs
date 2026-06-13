@@ -194,6 +194,30 @@ public static class DesktopInputBridge
             case KeyCode.Tab:
                 inputKey = Key.Tab;
                 return true;
+            case KeyCode.Space:
+                inputKey = Key.Space;
+                return true;
+            case KeyCode.Escape:
+                inputKey = Key.Escape;
+                return true;
+            case KeyCode.PageUp:
+                inputKey = Key.PageUp;
+                return true;
+            case KeyCode.PageDown:
+                inputKey = Key.PageDown;
+                return true;
+            case KeyCode.LeftArrow:
+                inputKey = Key.LeftArrow;
+                return true;
+            case KeyCode.RightArrow:
+                inputKey = Key.RightArrow;
+                return true;
+            case KeyCode.UpArrow:
+                inputKey = Key.UpArrow;
+                return true;
+            case KeyCode.DownArrow:
+                inputKey = Key.DownArrow;
+                return true;
             case KeyCode.LeftShift:
                 inputKey = Key.LeftShift;
                 return true;

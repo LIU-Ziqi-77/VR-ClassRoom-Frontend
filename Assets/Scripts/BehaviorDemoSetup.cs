@@ -19,8 +19,9 @@ using VRM;
 /// </summary>
 public class BehaviorDemoSetup : MonoBehaviour
 {
-    static readonly Vector3 DesktopFallbackCameraPosition = new Vector3(472.513f, 1.2393115f, 189.12f);
-    static readonly Quaternion DesktopFallbackCameraRotation = Quaternion.Euler(0f, -102.675f, 0f);
+    static readonly Vector3 DesktopFallbackCameraPosition = new Vector3(468.951f, 1.047f, 189.15f);
+    static readonly Quaternion DesktopFallbackCameraRotation = Quaternion.Euler(0f, 160f, 0f);
+    static readonly Vector3 DesktopHeadLocalPosition = new Vector3(0f, 1.59f, 0f);
 
     [Header("Options")]
     public bool includeInactive = false;
@@ -136,7 +137,7 @@ public class BehaviorDemoSetup : MonoBehaviour
             DisableIfExists<StudentTestController>();
         }
 
-        // Step 5: Camera setup — replace walk/fly cameras with demo camera
+        // Step 5: Camera setup - replace walk/fly cameras with demo camera
         SetupDemoCamera();
 
         Debug.Log($"[BehaviorDemoSetup] ====== SETUP COMPLETE: {students.Count} student(s) ready ======");
@@ -241,35 +242,34 @@ public class BehaviorDemoSetup : MonoBehaviour
             return;
         }
 
-        // When no XR device is active, the camera may still be inside an XR Origin
-        // hierarchy (XR Origin → Camera Offset → Main Camera). Detach it so
-        // DemoCameraController has uncontested world-space control.
-        if (IsInsideXROrigin(mainCam.transform))
+        // Keep the camera under XR Origin in desktop mode. That makes the editor
+        // start from the same teacher spawn point used by the Quest build.
+        GameObject xrOriginGO = FindXROrigin();
+        bool cameraInsideXrOrigin = xrOriginGO != null && IsInsideXROrigin(mainCam.transform);
+        if (xrOriginGO != null)
         {
-            mainCam.transform.SetParent(null);
-            Debug.Log("[BehaviorDemoSetup] Detached Main Camera from XR Origin for desktop mode.");
-
-            // Disable any XR tracking components that might fight the camera controller
-            foreach (var comp in mainCam.GetComponents<MonoBehaviour>())
-            {
-                string typeName = comp.GetType().Name;
-                if (typeName.Contains("TrackedPoseDriver") || typeName.Contains("XRController"))
-                {
-                    comp.enabled = false;
-                    Debug.Log($"[BehaviorDemoSetup] Disabled {typeName} on camera for desktop mode.");
-                }
-            }
-
-            var xrOriginGO = FindXROrigin();
-            if (xrOriginGO != null)
-            {
-                xrOriginGO.SetActive(false);
-                Debug.Log("[BehaviorDemoSetup] Disabled XR Origin hierarchy (not needed in desktop mode).");
-            }
+            xrOriginGO.SetActive(true);
         }
 
-        Pose desktopStartPose = GetDesktopCameraStartPose();
-        mainCam.transform.SetPositionAndRotation(desktopStartPose.position, desktopStartPose.rotation);
+        DisableTrackingComponents(mainCam);
+
+        if (!cameraInsideXrOrigin && xrOriginGO != null)
+        {
+            ParentCameraToXrOrigin(mainCam, xrOriginGO);
+            cameraInsideXrOrigin = true;
+        }
+
+        if (cameraInsideXrOrigin)
+        {
+            NormalizeDesktopCameraLocalPose(mainCam);
+            Debug.Log("[BehaviorDemoSetup] Desktop camera kept on XR Origin spawn.");
+        }
+        else
+        {
+            Pose desktopStartPose = GetDesktopCameraStartPose();
+            mainCam.transform.SetPositionAndRotation(desktopStartPose.position, desktopStartPose.rotation);
+            Debug.Log("[BehaviorDemoSetup] No XR Origin found; using fallback desktop camera pose.");
+        }
 
         var existing = mainCam.GetComponent<DemoCameraController>();
         if (existing == null)
@@ -289,6 +289,47 @@ public class BehaviorDemoSetup : MonoBehaviour
         }
 
         Debug.Log("[BehaviorDemoSetup] Desktop camera ready. Right-click + WASD to move.");
+    }
+
+    static void DisableTrackingComponents(Camera mainCam)
+    {
+        foreach (var comp in mainCam.GetComponents<MonoBehaviour>())
+        {
+            if (comp == null) continue;
+
+            string typeName = comp.GetType().Name;
+            if (typeName.Contains("TrackedPoseDriver") || typeName.Contains("XRController"))
+            {
+                comp.enabled = false;
+                Debug.Log($"[BehaviorDemoSetup] Disabled {typeName} on camera for desktop mode.");
+            }
+        }
+    }
+
+    static void ParentCameraToXrOrigin(Camera mainCam, GameObject xrOriginGO)
+    {
+        var origin = xrOriginGO.GetComponent<XROrigin>();
+        Transform cameraParent = origin != null && origin.CameraFloorOffsetObject != null
+            ? origin.CameraFloorOffsetObject.transform
+            : xrOriginGO.transform.Find("Camera Offset");
+
+        if (cameraParent == null)
+        {
+            cameraParent = xrOriginGO.transform;
+        }
+
+        mainCam.transform.SetParent(cameraParent, false);
+        if (origin != null)
+        {
+            origin.Camera = mainCam;
+        }
+    }
+
+    static void NormalizeDesktopCameraLocalPose(Camera mainCam)
+    {
+        Transform t = mainCam.transform;
+        t.localPosition = DesktopHeadLocalPosition;
+        t.localRotation = Quaternion.identity;
     }
 
     static Pose GetDesktopCameraStartPose()

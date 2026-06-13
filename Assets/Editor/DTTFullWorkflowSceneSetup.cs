@@ -42,12 +42,23 @@ public static class DTTFullWorkflowSceneSetup
             receiver = managerGo.AddComponent<TeacherVoiceIntentReceiver>();
         }
 
+        DTTMonitorReporter monitorReporter = managerGo.GetComponent<DTTMonitorReporter>();
+        if (monitorReporter == null)
+        {
+            monitorReporter = managerGo.AddComponent<DTTMonitorReporter>();
+        }
+
         workflow.teachingAidManager = teachingAidManager;
         workflow.requireSpecificTeachingAid = false;
+        workflow.autoCreateMonitorReporter = true;
         workflow.students = BuildStudentBindings();
 
         receiver.workflowController = workflow;
         receiver.listenPort = 5055;
+
+        monitorReporter.workflowController = workflow;
+        monitorReporter.monitorHost = "255.255.255.255";
+        monitorReporter.monitorPort = 5060;
 
         teachingAidManager.scenarioController = null;
         EnsureAndroidNetworkPermission();
