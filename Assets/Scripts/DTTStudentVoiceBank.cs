@@ -64,7 +64,7 @@ public static class DTTStudentVoiceBank
             case ClassroomItemType.Pencil:
                 return "铅笔！";
             case ClassroomItemType.OpenNotebook:
-                return "笔记本！";
+                return "本子！";
             case ClassroomItemType.Cup:
                 return "水杯！";
             default:

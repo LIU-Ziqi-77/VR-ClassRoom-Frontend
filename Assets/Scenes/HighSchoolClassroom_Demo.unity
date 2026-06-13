@@ -669,7 +669,7 @@ MonoBehaviour:
     - student 3
   requireSpecificTeachingAid: 0
   targetItemType: 3
-  responseWaitSeconds: 5
+  responseWaitSeconds: 2
   correctionPauseSeconds: 2
   resetScenarioOnStudentChange: 1
   enableKeyboardTesting: 1

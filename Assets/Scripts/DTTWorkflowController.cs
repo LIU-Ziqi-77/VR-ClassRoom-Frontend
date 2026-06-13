@@ -57,7 +57,7 @@ public class DTTWorkflowController : MonoBehaviour
     public ClassroomItemType targetItemType = ClassroomItemType.Ruler;
 
     [Header("Timing")]
-    public float responseWaitSeconds = 5f;
+    public float responseWaitSeconds = 2f;
     public float correctionPauseSeconds = 2f;
     public float distractorCollectSeconds = 1.2f;
     public float distractorActionSeconds = 3f;

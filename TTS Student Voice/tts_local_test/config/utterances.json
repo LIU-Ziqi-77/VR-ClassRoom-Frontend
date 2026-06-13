@@ -26,11 +26,11 @@
     },
     {
       "key": "notebook_short",
-      "text": "笔记本！"
+      "text": "本子！"
     },
     {
       "key": "notebook_sentence",
-      "text": "这是笔记本。"
+      "text": "这是本子。"
     }
   ],
   "uncertain_answers": [
