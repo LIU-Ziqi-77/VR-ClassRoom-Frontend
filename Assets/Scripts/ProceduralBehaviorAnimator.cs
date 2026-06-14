@@ -35,8 +35,9 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     /// <summary>Human-readable name of the currently running behavior ("" when idle).</summary>
     public string CurrentBehaviorName { get; private set; } = "";
 
-    /// <summary>Seat / home position captured on first LeaveSeat call; used by ReturnToSeat.</summary>
+    /// <summary>Seat / home pose captured on first LeaveSeat call; used by ReturnToSeat.</summary>
     [HideInInspector] public Vector3 seatPosition;
+    [HideInInspector] public Quaternion seatRotation;
     [HideInInspector] public bool seatPositionCaptured;
 
     private Dictionary<HumanBodyBones, Quaternion> _restPose = new Dictionary<HumanBodyBones, Quaternion>();
@@ -242,13 +243,14 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
     /// <summary>
     /// Leave seat: approximate stand-up pose and translate toward targetWorldPos.
-    /// Captures seatPosition on first call so ReturnToSeat can undo it.
+    /// Captures seat pose on first call so ReturnToSeat can undo it.
     /// </summary>
     public void PlayLeaveSeat(Vector3 targetWorldPos, float moveDuration = 2.5f)
     {
         if (!seatPositionCaptured)
         {
             seatPosition = transform.position;
+            seatRotation = transform.rotation;
             seatPositionCaptured = true;
         }
         StartBehavior(LeaveSeatRoutine(targetWorldPos, moveDuration));
@@ -1853,7 +1855,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         }
         transform.position = targetPos;
 
-        // ── Phase 4: Idle standing with gentle breathing ──
+        // ── Phase 4: Settle into standing idle with gentle breathing ──
         var idlePose = new Dictionary<HumanBodyBones, Quaternion>
         {
             [HumanBodyBones.Spine]         = Rest(HumanBodyBones.Spine) * Quaternion.Euler(2f, 0, 0),
@@ -1868,7 +1870,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             [HumanBodyBones.LeftLowerArm]  = aLL,
             [HumanBodyBones.RightLowerArm] = aRL,
         };
-        yield return StartCoroutine(TransitionTo(idlePose, 0.3f));
+        yield return StartCoroutine(TransitionTo(idlePose, 0.55f));
 
         float idleT = 0f;
         while (_behaviorActive)
@@ -1915,17 +1917,17 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         dir.y = 0;
         if (dir.sqrMagnitude > 0.001f)
         {
-            Quaternion targetRot = Quaternion.LookRotation(dir.normalized);
+            Quaternion turnTargetRot = Quaternion.LookRotation(dir.normalized);
             float rotT = 0f;
-            Quaternion startRot = transform.rotation;
+            Quaternion turnStartRot = transform.rotation;
             while (rotT < 0.25f)
             {
-                transform.rotation = Quaternion.Slerp(startRot, targetRot,
+                transform.rotation = Quaternion.Slerp(turnStartRot, turnTargetRot,
                     Mathf.SmoothStep(0, 1, rotT / 0.25f));
                 rotT += Time.deltaTime;
                 yield return null;
             }
-            transform.rotation = targetRot;
+            transform.rotation = turnTargetRot;
         }
 
         // Walk with procedural legs (upright)
@@ -1980,5 +1982,26 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             yield return null;
         }
         transform.position = targetPos;
+
+        // Restore original seated facing direction before releasing the bone overrides.
+        // Without this, a student who leaves sideways returns to the seat still facing sideways.
+        Quaternion startRot = transform.rotation;
+        Quaternion targetRot = seatRotation;
+        if (Quaternion.Angle(startRot, targetRot) > 0.5f)
+        {
+            float rotT = 0f;
+            const float rotateBackSeconds = 0.45f;
+            while (rotT < rotateBackSeconds && _behaviorActive)
+            {
+                transform.rotation = Quaternion.Slerp(
+                    startRot,
+                    targetRot,
+                    Mathf.SmoothStep(0f, 1f, rotT / rotateBackSeconds));
+                rotT += Time.deltaTime;
+                yield return null;
+            }
+        }
+
+        transform.rotation = targetRot;
     }
 }

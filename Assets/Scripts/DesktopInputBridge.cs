@@ -109,6 +109,22 @@ public static class DesktopInputBridge
 #endif
     }
 
+    public static float GetMouseScrollY()
+    {
+#if ENABLE_INPUT_SYSTEM
+        if (Mouse.current != null)
+        {
+            return Mouse.current.scroll.ReadValue().y;
+        }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+        return Input.mouseScrollDelta.y;
+#else
+        return 0f;
+#endif
+    }
+
 #if ENABLE_INPUT_SYSTEM
     private static ButtonControl GetMouseButtonControl(int button)
     {
@@ -160,6 +176,9 @@ public static class DesktopInputBridge
                 return true;
             case KeyCode.L:
                 inputKey = Key.L;
+                return true;
+            case KeyCode.M:
+                inputKey = Key.M;
                 return true;
             case KeyCode.N:
                 inputKey = Key.N;

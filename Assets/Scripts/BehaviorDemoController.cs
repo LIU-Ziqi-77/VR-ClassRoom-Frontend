@@ -74,6 +74,10 @@ public class BehaviorDemoController : MonoBehaviour
 
     [Tooltip("How far from the seat the student walks when leaving (world units).")]
     public float leaveSeatDistance = 2.5f;
+    [Tooltip("Student whose leave-seat path is forced to local right instead of random side selection.")]
+    public string fixedRightLeaveStudentName = "可可";
+    [Tooltip("Leave-seat distance for the fixed-right student, in world units.")]
+    public float fixedRightLeaveDistance = 1f;
 
     [Header("State")]
     [SerializeField] int selectedIndex;
@@ -437,13 +441,26 @@ public class BehaviorDemoController : MonoBehaviour
         }
         else
         {
-            // Walk sideways into the aisle (avoids clipping through desk behind).
-            // Students face forward; backward = into the next desk row.
-            float side = Random.value > 0.5f ? 1f : -1f;
-            Vector3 awayDir = pba.transform.right * side + pba.transform.forward * 0.3f;
+            Vector3 awayDir;
+            float moveDistance;
+
+            if (pba.gameObject.name == fixedRightLeaveStudentName)
+            {
+                awayDir = pba.transform.right;
+                moveDistance = fixedRightLeaveDistance;
+            }
+            else
+            {
+                // Walk sideways into the aisle (avoids clipping through desk behind).
+                // Students face forward; backward = into the next desk row.
+                float side = Random.value > 0.5f ? 1f : -1f;
+                awayDir = pba.transform.right * side + pba.transform.forward * 0.3f;
+                moveDistance = leaveSeatDistance;
+            }
+
             awayDir.y = 0;
             awayDir.Normalize();
-            Vector3 target = pba.transform.position + awayDir * leaveSeatDistance;
+            Vector3 target = pba.transform.position + awayDir * moveDistance;
 
             pba.PlayLeaveSeat(target, leaveSeatMoveDuration);
             _lastAction = "离座跑开";
