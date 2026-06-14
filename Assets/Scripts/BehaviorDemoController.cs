@@ -25,6 +25,7 @@ using VRM;
 ///   T          Hit Desk
 ///   Y          Scream
 ///   U          Push Classmate
+///   V          Recover from lie down / slump
 ///   S          Stop current behavior
 ///   X          Stop ALL students
 ///   H          Print help to console
@@ -217,6 +218,7 @@ public class BehaviorDemoController : MonoBehaviour
         if (DesktopInputBridge.GetKeyDown(KeyCode.T)) DoTrigger("HitDesk",         TriggerHitDesk);
         if (DesktopInputBridge.GetKeyDown(KeyCode.Y)) DoTrigger("Scream",          TriggerScream);
         if (DesktopInputBridge.GetKeyDown(KeyCode.U)) DoTrigger("Push",            TriggerPushClassmate);
+        if (DesktopInputBridge.GetKeyDown(KeyCode.V)) DoTrigger("RecoverLieDown",  TriggerRecoverLieDown);
 
         if (DesktopInputBridge.GetKeyDown(KeyCode.S)) { StopCurrent(); _lastAction = "Stop"; }
         if (DesktopInputBridge.GetKeyDown(KeyCode.X)) { StopAll(); _lastAction = "StopAll"; }
@@ -472,9 +474,18 @@ public class BehaviorDemoController : MonoBehaviour
     {
         var pba = CurrentPBA;
         if (pba == null) { _lastDiag = "LieDown failed: no student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
-        pba.PlayLieDown(lieDownDuration);
-        _lastAction = "Lie Down / Slump";
-        Log("Lie Down / Slump");
+        pba.PlayLieDownHold();
+        _lastAction = "趴桌保持";
+        Log("Lie Down / Slump Hold");
+    }
+
+    public void TriggerRecoverLieDown()
+    {
+        var pba = CurrentPBA;
+        if (pba == null) { _lastDiag = "RecoverLieDown failed: no student"; Debug.LogWarning($"[BehaviorDemo] {_lastDiag}"); return; }
+        pba.PlayRecoverFromLieDown();
+        _lastAction = "趴桌恢复";
+        Log("Recover From Lie Down / Slump");
     }
 
     public void TriggerTakeNotes()
@@ -642,6 +653,7 @@ public class BehaviorDemoController : MonoBehaviour
         GUILayout.Label("<color=#faa><b>极端行为</b></color>", smallStyle);
         GUILayout.BeginHorizontal();
         if (GUILayout.Button("E  趴桌")) { _buttonClickCount++; TriggerLieDown(); }
+        if (GUILayout.Button("V  恢复")) { _buttonClickCount++; TriggerRecoverLieDown(); }
         if (GUILayout.Button("R  记笔记")) { _buttonClickCount++; TriggerTakeNotes(); }
         if (GUILayout.Button("T  拍桌")) { _buttonClickCount++; TriggerHitDesk(); }
         if (GUILayout.Button("Y  尖叫")) { _buttonClickCount++; TriggerScream(); }
@@ -698,7 +710,8 @@ public class BehaviorDemoController : MonoBehaviour
   L            离座 / 回座位 (Leave / Return to Seat)
 
   ── Extreme ──
-  E            趴桌 (Lie Down / Slump)
+  E            趴桌并保持 (Lie Down / Slump Hold)
+  V            趴桌恢复 (Recover From Slump)
   R            记笔记 (Take Notes)
   T            拍桌 (Hit Desk)
   Y            尖叫 (Scream)

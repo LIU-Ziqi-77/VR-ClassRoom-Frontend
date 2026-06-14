@@ -28,6 +28,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
     private Coroutine _activeBehavior;
     private bool _behaviorActive;
+    private bool _lieDownExitRequested;
     private PlayableGraph _clipGraph;
     private bool _clipChangedRootMotion;
     private bool _savedApplyRootMotion;
@@ -165,6 +166,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
     public void StopCurrentBehavior()
     {
+        _lieDownExitRequested = true;
         if (_activeBehavior != null)
         {
             StopCoroutine(_activeBehavior);
@@ -206,6 +208,19 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     public void PlayLieDown(float duration = 0f)
     {
         StartBehavior(LieDownRoutine(duration));
+    }
+
+    public void PlayLieDownHold()
+    {
+        StartBehavior(LieDownRoutine(0f));
+    }
+
+    public void PlayRecoverFromLieDown()
+    {
+        if (_behaviorActive && CurrentBehaviorName == "趴桌")
+        {
+            _lieDownExitRequested = true;
+        }
     }
 
     public void PlayTouchNose(float duration = 3f)
@@ -310,6 +325,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             StopCoroutine(_activeBehavior);
         StopAnimationClipGraph();
         ClearOverrides();
+        _lieDownExitRequested = false;
         _behaviorActive = true;
         _activeBehavior = StartCoroutine(WrapBehavior(routine));
         Debug.Log($"[PBA] {gameObject.name}: Behavior started (restPose captured={_restPoseCaptured})");
@@ -369,12 +385,18 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         }
 
         var snapshot = new Dictionary<HumanBodyBones, Quaternion>(_overrides);
+        var startWeights = new Dictionary<HumanBodyBones, float>();
+        foreach (var kv in snapshot)
+        {
+            startWeights[kv.Key] = _overrideWeights.ContainsKey(kv.Key) ? _overrideWeights[kv.Key] : 1f;
+        }
+
         float elapsed = 0;
         while (elapsed < seconds)
         {
             float t = 1f - (elapsed / seconds);
             foreach (var kv in snapshot)
-                _overrideWeights[kv.Key] = t;
+                _overrideWeights[kv.Key] = startWeights[kv.Key] * t;
             elapsed += Time.deltaTime;
             yield return null;
         }
@@ -576,7 +598,12 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     /// Helper: predicts the forearm's world rotation after arm overrides are applied.
     Quaternion PredictForearmWorld(Quaternion upperArmLocalTarget, Quaternion lowerArmLocalTarget)
     {
-        Transform ua = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+        return PredictForearmWorld(HumanBodyBones.RightUpperArm, upperArmLocalTarget, lowerArmLocalTarget);
+    }
+
+    Quaternion PredictForearmWorld(HumanBodyBones upperArmBone, Quaternion upperArmLocalTarget, Quaternion lowerArmLocalTarget)
+    {
+        Transform ua = animator.GetBoneTransform(upperArmBone);
         if (ua == null) return Quaternion.identity;
         Quaternion shoulderWorld = ua.parent != null ? ua.parent.rotation : Quaternion.identity;
         return shoulderWorld * upperArmLocalTarget * lowerArmLocalTarget;
@@ -1014,8 +1041,9 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         float roll = variant == 2 ? side * Random.Range(3f, 6f) : Random.Range(-2f, 3f);
         float entrySeconds = Random.Range(1.45f, 1.85f);
         float exitSeconds = Random.Range(0.9f, 1.2f);
-        float totalDuration = duration > 0 ? duration : 999f;
-        float holdSeconds = Mathf.Max(0.4f, totalDuration - entrySeconds - exitSeconds);
+        bool holdUntilRecovery = duration <= 0f;
+        float totalDuration = duration > 0 ? duration : 0f;
+        float holdSeconds = holdUntilRecovery ? 0f : Mathf.Max(0.4f, totalDuration - entrySeconds - exitSeconds);
 
         DeskSlumpTargets targets = FindLieDownDeskTargets(variant, side);
 
@@ -1040,7 +1068,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
         float shiftSeed = Random.Range(0f, 6.28f);
         t = 0f;
-        while (t < holdSeconds && _behaviorActive)
+        while (_behaviorActive && (holdUntilRecovery ? !_lieDownExitRequested : t < holdSeconds))
         {
             float breath = Mathf.Sin(t * 1.25f + shiftSeed) * 0.65f;
             float tinyShift = Mathf.Sin(t * 0.62f + shiftSeed) * 0.45f;
@@ -1082,10 +1110,10 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
     Dictionary<HumanBodyBones, Quaternion> BuildLieDownPose(int variant, float side, float yaw, float roll, float intensity)
     {
-        float finalSpine = variant == 0 ? 22f : (variant == 1 ? 30f : 26f);
-        float finalChest = variant == 0 ? 12f : (variant == 1 ? 18f : 16f);
-        float finalNeck = variant == 0 ? 14f : (variant == 1 ? 21f : 18f);
-        float finalHead = variant == 0 ? 19f : (variant == 1 ? 29f : 25f);
+        float finalSpine = variant == 0 ? 16f : (variant == 1 ? 20f : 18f);
+        float finalChest = variant == 0 ? 9f : (variant == 1 ? 12f : 11f);
+        float finalNeck = variant == 0 ? 9f : (variant == 1 ? 12f : 11f);
+        float finalHead = variant == 0 ? 18f : (variant == 1 ? 21f : 20f);
 
         float forward = Mathf.Lerp(0f, finalSpine, intensity);
         float chestForward = Mathf.Lerp(0f, finalChest, intensity);
@@ -1123,8 +1151,8 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             SetOverride(kv.Key, kv.Value, intensity);
         }
 
-        float spineBase = variant == 0 ? 22f : (variant == 1 ? 30f : 26f);
-        float chestBase = variant == 0 ? 12f : (variant == 1 ? 18f : 16f);
+        float spineBase = variant == 0 ? 16f : (variant == 1 ? 20f : 18f);
+        float chestBase = variant == 0 ? 9f : (variant == 1 ? 12f : 11f);
         SetOverride(HumanBodyBones.Spine,
             Rest(HumanBodyBones.Spine) * Quaternion.Euler((spineBase + breath) * intensity, yaw * 0.25f, roll * 0.2f), intensity);
         if (_restPose.ContainsKey(HumanBodyBones.Chest))
@@ -1135,12 +1163,15 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         Quaternion rightUpperArmTarget;
         Quaternion leftLowerArmTarget;
         Quaternion rightLowerArmTarget;
+        Vector3 leftBendHint = -targets.right * 0.7f + Vector3.up * 0.14f + targets.forward * 0.18f;
+        Vector3 rightBendHint = targets.right * 0.62f + Vector3.up * 0.12f + targets.forward * 0.22f;
+
         ComputeArmIKToTarget(
             HumanBodyBones.LeftUpperArm,
             HumanBodyBones.LeftLowerArm,
             HumanBodyBones.LeftHand,
             targets.leftHand,
-            -1f,
+            leftBendHint,
             out leftUpperArmTarget,
             out leftLowerArmTarget);
         ComputeArmIKToTarget(
@@ -1148,7 +1179,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             HumanBodyBones.RightLowerArm,
             HumanBodyBones.RightHand,
             targets.rightHand,
-            1f,
+            rightBendHint,
             out rightUpperArmTarget,
             out rightLowerArmTarget);
 
@@ -1156,10 +1187,25 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         SetOverride(HumanBodyBones.RightUpperArm, rightUpperArmTarget, armWeight);
         SetOverride(HumanBodyBones.LeftLowerArm, leftLowerArmTarget, armWeight);
         SetOverride(HumanBodyBones.RightLowerArm, rightLowerArmTarget, armWeight);
-        SetOverride(HumanBodyBones.LeftHand,
-            Rest(HumanBodyBones.LeftHand) * Quaternion.Euler(handFidget, 0f, handFidget * 0.4f), armWeight);
-        SetOverride(HumanBodyBones.RightHand,
-            Rest(HumanBodyBones.RightHand) * Quaternion.Euler(-handFidget * 0.8f, 0f, handFidget * -0.35f), armWeight);
+
+        Quaternion leftForearmWorld = PredictForearmWorld(
+            HumanBodyBones.LeftUpperArm,
+            leftUpperArmTarget,
+            leftLowerArmTarget);
+        Quaternion rightForearmWorld = PredictForearmWorld(
+            HumanBodyBones.RightUpperArm,
+            rightUpperArmTarget,
+            rightLowerArmTarget);
+
+        Vector3 leftPalmDir = (Vector3.down * 1.8f + targets.forward * 0.15f + targets.right * 0.08f).normalized;
+        Vector3 rightPalmDir = (Vector3.down * 2f - targets.forward * 0.06f - targets.right * 0.05f).normalized;
+        Quaternion leftHandTarget = ComputePalmCorrectedHand(HumanBodyBones.LeftHand, leftPalmDir, leftForearmWorld)
+            * Quaternion.Euler(handFidget * 0.35f, -4f, 6f + handFidget * 0.2f);
+        Quaternion rightHandTarget = ComputePalmCorrectedHand(HumanBodyBones.RightHand, rightPalmDir, rightForearmWorld)
+            * Quaternion.Euler(-handFidget * 0.25f, 3f, -4f + handFidget * -0.15f);
+
+        SetOverride(HumanBodyBones.LeftHand, leftHandTarget, armWeight);
+        SetOverride(HumanBodyBones.RightHand, rightHandTarget, armWeight);
     }
 
     DeskSlumpTargets FindLieDownDeskTargets(int variant, float side)
@@ -1208,7 +1254,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
 
         if (bestRenderer != null)
         {
-            surfaceY = bestBounds.max.y + 0.045f;
+            surfaceY = bestBounds.max.y;
             Vector3 flatToDesk = Vector3.ProjectOnPlane(bestBounds.center - chest, Vector3.up);
             if (flatToDesk.sqrMagnitude > 0.0001f)
             {
@@ -1217,22 +1263,26 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             }
 
             nearPoint = bestBounds.ClosestPoint(chest);
-            nearPoint.y = surfaceY;
-            nearPoint += fwd * 0.05f;
+            nearPoint += fwd * 0.14f;
         }
 
-        float handSpread = variant == 2 ? 0.16f : 0.18f;
-        float sideBias = variant == 2 ? side * 0.06f : 0f;
-        Vector3 tuckedOffset = -fwd * 0.06f + right * side * 0.03f;
-        Vector3 reachingOffset = fwd * 0.04f - right * side * 0.02f;
+        float wristY = surfaceY + 0.06f;
+        nearPoint.y = wristY;
+
+        float leftSpread = variant == 1 ? 0.11f : 0.13f;
+        float rightSpread = variant == 1 ? 0.17f : 0.15f;
+        float sideBias = variant == 2 ? side * 0.025f : 0f;
+        Vector3 leftRestOffset = fwd * 0.08f - right * 0.015f + right * sideBias;
+        Vector3 rightRestOffset = fwd * (variant == 1 ? 0.22f : 0.17f) + right * sideBias;
+
         DeskSlumpTargets targets = new DeskSlumpTargets
         {
             foundDesk = bestRenderer != null,
             forward = fwd,
             right = right,
             surfaceY = surfaceY,
-            leftHand = nearPoint - right * handSpread + right * sideBias + (side < 0f ? tuckedOffset : reachingOffset),
-            rightHand = nearPoint + right * handSpread + right * sideBias + (side > 0f ? tuckedOffset : reachingOffset)
+            leftHand = nearPoint - right * leftSpread + leftRestOffset,
+            rightHand = nearPoint + right * rightSpread + rightRestOffset
         };
 
         return targets;
