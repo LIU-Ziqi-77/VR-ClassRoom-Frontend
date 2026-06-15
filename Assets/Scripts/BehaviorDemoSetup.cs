@@ -28,6 +28,8 @@ public class BehaviorDemoSetup : MonoBehaviour
     public bool disableOldTestControllers = true;
     public bool randomizePitch = true;
     public AnimationClip clappingClip;
+    public AnimationClip leaveSeatLayingClip;
+    public AnimationClip leaveSeatGettingUpClip;
     [Tooltip("Fallback runtime names if a student is not one of the Ele_student prefabs.")]
     public string[] studentDisplayNames = { "可可", "李奥", "安娜" };
 
@@ -126,6 +128,12 @@ public class BehaviorDemoSetup : MonoBehaviour
         {
             demo.clappingClip = clappingClip;
         }
+        demo.leaveSeatLayingClip = leaveSeatLayingClip != null
+            ? leaveSeatLayingClip
+            : LoadResourceAnimationClip("DTTAnimationClips/Laying Shaking Head");
+        demo.leaveSeatGettingUpClip = leaveSeatGettingUpClip != null
+            ? leaveSeatGettingUpClip
+            : LoadResourceAnimationClip("DTTAnimationClips/Getting Up");
         Debug.Log($"[BehaviorDemoSetup] Step 3: {students.Count} students assigned to controller");
 
         // Step 4: Disable old controllers
@@ -452,5 +460,30 @@ public class BehaviorDemoSetup : MonoBehaviour
             inst.enabled = false;
             Debug.Log($"[BehaviorDemoSetup] Disabled {typeof(T).Name} on '{inst.gameObject.name}'");
         }
+    }
+
+    static AnimationClip LoadResourceAnimationClip(string resourcePath)
+    {
+        AnimationClip[] clips = Resources.LoadAll<AnimationClip>(resourcePath);
+        if (clips == null || clips.Length == 0)
+        {
+            Debug.LogWarning($"[BehaviorDemoSetup] No AnimationClip found in Resources at '{resourcePath}'.");
+            return null;
+        }
+
+        string fileName = resourcePath.Substring(resourcePath.LastIndexOf('/') + 1);
+        foreach (AnimationClip clip in clips)
+        {
+            if (clip != null && clip.length > 0f && clip.name == fileName)
+                return clip;
+        }
+
+        foreach (AnimationClip clip in clips)
+        {
+            if (clip != null && clip.length > 0f && !clip.name.StartsWith("__preview__"))
+                return clip;
+        }
+
+        return clips[0];
     }
 }

@@ -72,6 +72,10 @@ public class BehaviorDemoController : MonoBehaviour
     public AnimationClip clappingClip;
     [Tooltip("Optional imported humanoid FBX clip for touch-nose. If empty, the procedural pose is used.")]
     public AnimationClip touchNoseClip;
+    [Tooltip("Optional full-body humanoid FBX clip held after the student leaves the seat.")]
+    public AnimationClip leaveSeatLayingClip;
+    [Tooltip("Optional full-body humanoid FBX clip played before returning to the seat.")]
+    public AnimationClip leaveSeatGettingUpClip;
 
     [Tooltip("How far from the seat the student walks when leaving (world units).")]
     public float leaveSeatDistance = 2.5f;
@@ -79,6 +83,8 @@ public class BehaviorDemoController : MonoBehaviour
     public string fixedRightLeaveStudentName = "可可";
     [Tooltip("Leave-seat distance for the fixed-right student, in world units.")]
     public float fixedRightLeaveDistance = 1f;
+    [Tooltip("Vertical root offset applied while holding the leave-seat laying clip. Negative values lower the avatar toward the floor.")]
+    public float leaveSeatLayingRootYOffset = -0.68f;
 
     [Header("State")]
     [SerializeField] int selectedIndex;
@@ -437,7 +443,7 @@ public class BehaviorDemoController : MonoBehaviour
         if (pba.seatPositionCaptured && pba.IsBehaviorActive && pba.CurrentBehaviorName == "离座")
         {
             // Already away — return to seat
-            pba.PlayReturnToSeat(returnSeatMoveDuration);
+            pba.PlayReturnToSeat(returnSeatMoveDuration, leaveSeatGettingUpClip);
             _lastAction = "回座位";
             Log("Return To Seat");
         }
@@ -464,7 +470,7 @@ public class BehaviorDemoController : MonoBehaviour
             awayDir.Normalize();
             Vector3 target = pba.transform.position + awayDir * moveDistance;
 
-            pba.PlayLeaveSeat(target, leaveSeatMoveDuration);
+            pba.PlayLeaveSeat(target, leaveSeatMoveDuration, leaveSeatLayingClip, leaveSeatLayingRootYOffset);
             _lastAction = "离座跑开";
             Log($"Leave Seat → {target}");
         }

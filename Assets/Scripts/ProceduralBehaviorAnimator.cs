@@ -40,6 +40,8 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     [HideInInspector] public Vector3 seatPosition;
     [HideInInspector] public Quaternion seatRotation;
     [HideInInspector] public bool seatPositionCaptured;
+    private Vector3 _leaveSeatStandingPosition;
+    private bool _leaveSeatRootLowered;
 
     private Dictionary<HumanBodyBones, Quaternion> _restPose = new Dictionary<HumanBodyBones, Quaternion>();
     private Dictionary<HumanBodyBones, Quaternion> _overrides = new Dictionary<HumanBodyBones, Quaternion>();
@@ -260,7 +262,11 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     /// Leave seat: approximate stand-up pose and translate toward targetWorldPos.
     /// Captures seat pose on first call so ReturnToSeat can undo it.
     /// </summary>
-    public void PlayLeaveSeat(Vector3 targetWorldPos, float moveDuration = 2.5f)
+    public void PlayLeaveSeat(
+        Vector3 targetWorldPos,
+        float moveDuration = 2.5f,
+        AnimationClip layingHoldClip = null,
+        float layingRootYOffset = 0f)
     {
         if (!seatPositionCaptured)
         {
@@ -268,14 +274,14 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             seatRotation = transform.rotation;
             seatPositionCaptured = true;
         }
-        StartBehavior(LeaveSeatRoutine(targetWorldPos, moveDuration));
+        StartBehavior(LeaveSeatRoutine(targetWorldPos, moveDuration, layingHoldClip, layingRootYOffset));
     }
 
     /// <summary>Return to the captured seat position.</summary>
-    public void PlayReturnToSeat(float moveDuration = 2f)
+    public void PlayReturnToSeat(float moveDuration = 2f, AnimationClip gettingUpClip = null)
     {
         if (!seatPositionCaptured) return;
-        StartBehavior(ReturnToSeatRoutine(moveDuration));
+        StartBehavior(ReturnToSeatRoutine(moveDuration, gettingUpClip));
     }
 
     /// <summary>Pushed reaction with directional displacement and stumble.</summary>
@@ -404,6 +410,23 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         ClearOverrides();
     }
 
+    IEnumerator MoveRootToPosition(Vector3 targetPosition, float seconds)
+    {
+        Vector3 startPosition = transform.position;
+        float elapsed = 0f;
+        float safeSeconds = Mathf.Max(0.01f, seconds);
+
+        while (elapsed < safeSeconds && _behaviorActive)
+        {
+            float t = Mathf.SmoothStep(0f, 1f, elapsed / safeSeconds);
+            transform.position = Vector3.Lerp(startPosition, targetPosition, t);
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        transform.position = targetPosition;
+    }
+
     IEnumerator AnimationClipRoutine(
         AnimationClip clip,
         float duration,
@@ -456,6 +479,81 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         _behaviorActive = false;
         _activeBehavior = null;
         CurrentBehaviorName = "";
+    }
+
+    IEnumerator FullBodyClipInCurrentBehavior(
+        AnimationClip clip,
+        string behaviorName,
+        float duration,
+        float blendInSeconds,
+        float playbackSpeed,
+        bool loop)
+    {
+        if (clip == null || animator == null || !animator.isHuman)
+            yield break;
+
+        StopAnimationClipGraph();
+        ClearOverrides();
+
+        _savedApplyRootMotion = animator.applyRootMotion;
+        _clipChangedRootMotion = true;
+        animator.applyRootMotion = false;
+
+        _clipGraph = PlayableGraph.Create($"{gameObject.name}_{behaviorName}_FullBody");
+        _clipGraph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
+
+        AnimationClipPlayable clipPlayable = AnimationClipPlayable.Create(_clipGraph, clip);
+        clipPlayable.SetApplyFootIK(false);
+        clipPlayable.SetApplyPlayableIK(false);
+        clipPlayable.SetSpeed(loop ? 0f : playbackSpeed);
+
+        bool hasBaseController = animator.runtimeAnimatorController != null;
+        AnimationMixerPlayable mixer = default;
+        if (hasBaseController)
+        {
+            AnimatorControllerPlayable basePlayable = AnimatorControllerPlayable.Create(_clipGraph, animator.runtimeAnimatorController);
+            mixer = AnimationMixerPlayable.Create(_clipGraph, 2);
+            mixer.SetInputWeight(0, 1f);
+            mixer.SetInputWeight(1, 0f);
+            _clipGraph.Connect(basePlayable, 0, mixer, 0);
+            _clipGraph.Connect(clipPlayable, 0, mixer, 1);
+        }
+
+        Playable sourcePlayable = hasBaseController ? (Playable)mixer : (Playable)clipPlayable;
+        AnimationPlayableOutput output = AnimationPlayableOutput.Create(_clipGraph, "DTT Full Body Clip", animator);
+        output.SetSourcePlayable(sourcePlayable);
+        _clipGraph.Play();
+
+        float elapsed = 0f;
+        float clipLength = Mathf.Max(0.01f, clip.length);
+        float safeBlendIn = Mathf.Max(0.01f, blendInSeconds);
+        bool indefinite = duration < 0f;
+
+        while (_behaviorActive && _clipGraph.IsValid() && (indefinite || elapsed < duration))
+        {
+            float weight = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / safeBlendIn));
+            if (hasBaseController)
+            {
+                if (!mixer.IsValid())
+                    break;
+
+                mixer.SetInputWeight(0, 1f - weight);
+                mixer.SetInputWeight(1, weight);
+            }
+
+            if (loop)
+            {
+                if (!clipPlayable.IsValid())
+                    break;
+
+                clipPlayable.SetTime((elapsed * playbackSpeed) % clipLength);
+            }
+
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        StopAnimationClipGraph();
     }
 
     AvatarMask CreateUpperBodyAvatarMask()
@@ -1798,7 +1896,7 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     }
 
     /// LEAVE SEAT: upright stand-up → turn → walk with coordinated limbs → idle.
-    IEnumerator LeaveSeatRoutine(Vector3 targetPos, float moveDuration)
+    IEnumerator LeaveSeatRoutine(Vector3 targetPos, float moveDuration, AnimationClip layingHoldClip, float layingRootYOffset)
     {
         CurrentBehaviorName = "离座";
         while (!_restPoseCaptured) yield return null;
@@ -1904,6 +2002,8 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
             yield return null;
         }
         transform.position = targetPos;
+        _leaveSeatStandingPosition = targetPos;
+        _leaveSeatRootLowered = false;
 
         // ── Phase 4: Settle into standing idle with gentle breathing ──
         var idlePose = new Dictionary<HumanBodyBones, Quaternion>
@@ -1922,6 +2022,25 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
         };
         yield return StartCoroutine(TransitionTo(idlePose, 0.55f));
 
+        if (layingHoldClip != null)
+        {
+            if (Mathf.Abs(layingRootYOffset) > 0.001f)
+            {
+                Vector3 layingRootPosition = _leaveSeatStandingPosition + Vector3.up * layingRootYOffset;
+                yield return StartCoroutine(MoveRootToPosition(layingRootPosition, 0.25f));
+                _leaveSeatRootLowered = true;
+            }
+
+            yield return StartCoroutine(FullBodyClipInCurrentBehavior(
+                layingHoldClip,
+                "离座躺下",
+                -1f,
+                0.25f,
+                1f,
+                true));
+            yield break;
+        }
+
         float idleT = 0f;
         while (_behaviorActive)
         {
@@ -1934,11 +2053,31 @@ public class ProceduralBehaviorAnimator : MonoBehaviour
     }
 
     /// RETURN TO SEAT: walk back upright with procedural legs, then sit down.
-    IEnumerator ReturnToSeatRoutine(float moveDuration)
+    IEnumerator ReturnToSeatRoutine(float moveDuration, AnimationClip gettingUpClip)
     {
         CurrentBehaviorName = "回座位";
         while (!_restPoseCaptured) yield return null;
         yield return null;
+
+        if (_leaveSeatRootLowered)
+        {
+            yield return StartCoroutine(MoveRootToPosition(_leaveSeatStandingPosition, 0.25f));
+            _leaveSeatRootLowered = false;
+            yield return null;
+        }
+
+        if (gettingUpClip != null)
+        {
+            float getUpDuration = Mathf.Max(0.1f, gettingUpClip.length);
+            yield return StartCoroutine(FullBodyClipInCurrentBehavior(
+                gettingUpClip,
+                "离座起身",
+                getUpDuration,
+                0.08f,
+                1f,
+                false));
+            yield return null;
+        }
 
         ComputeStandingLegPose(out var sLU, out var sRU, out var sLL, out var sRL);
         ComputeHangingArmPose(out var aLU, out var aRU, out var aLL, out var aRL,
