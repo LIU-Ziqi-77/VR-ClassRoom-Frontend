@@ -1,0 +1,32 @@
+[
+  {
+    "profile_id": "student_01_xiaoxiao_girl",
+    "profile_label": "Girl student 1, clear and attentive",
+    "azure_voice_name": "zh-CN-XiaoxiaoNeural",
+    "pitch": "+7st",
+    "rate": "+4%",
+    "volume": "+0%",
+    "style_description": "clear, bright, attentive girl student",
+    "hesitation_break_ms": 150
+  },
+  {
+    "profile_id": "student_02_xiaoyi_girl",
+    "profile_label": "Girl student 2, softer and shy",
+    "azure_voice_name": "zh-CN-XiaoyiNeural",
+    "pitch": "+5st",
+    "rate": "-8%",
+    "volume": "-12%",
+    "style_description": "soft, hesitant, shy girl student",
+    "hesitation_break_ms": 250
+  },
+  {
+    "profile_id": "student_03_yunjian_boy",
+    "profile_label": "Boy student, energetic and direct",
+    "azure_voice_name": "zh-CN-YunjianNeural",
+    "pitch": "+5st",
+    "rate": "+6%",
+    "volume": "+2%",
+    "style_description": "direct, active, boy student; pitch raised to avoid sounding too adult",
+    "hesitation_break_ms": 100
+  }
+]

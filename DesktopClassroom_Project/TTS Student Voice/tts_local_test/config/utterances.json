@@ -1,0 +1,96 @@
+{
+  "object_answers": [
+    {
+      "key": "ruler_short",
+      "text": "尺子！"
+    },
+    {
+      "key": "ruler_sentence",
+      "text": "这是尺子。"
+    },
+    {
+      "key": "eraser_short",
+      "text": "橡皮！"
+    },
+    {
+      "key": "eraser_sentence",
+      "text": "这是橡皮。"
+    },
+    {
+      "key": "pencil_short",
+      "text": "铅笔！"
+    },
+    {
+      "key": "pencil_sentence",
+      "text": "这是铅笔。"
+    },
+    {
+      "key": "notebook_short",
+      "text": "本子！"
+    },
+    {
+      "key": "notebook_sentence",
+      "text": "这是本子。"
+    }
+  ],
+  "uncertain_answers": [
+    {
+      "key": "uncertain_ruler",
+      "text": "嗯……是尺子吗？"
+    },
+    {
+      "key": "uncertain_eraser",
+      "text": "是……橡皮吗？"
+    },
+    {
+      "key": "maybe_this",
+      "text": "是这个吗？"
+    }
+  ],
+  "wrong_or_confused": [
+    {
+      "key": "i_dont_know",
+      "text": "我不知道。"
+    },
+    {
+      "key": "i_cannot",
+      "text": "老师，我不会。"
+    },
+    {
+      "key": "huh_what",
+      "text": "啊？什么？"
+    }
+  ],
+  "classroom_behavior": [
+    {
+      "key": "teacher_i_know",
+      "text": "老师老师，我知道！"
+    },
+    {
+      "key": "want_to_play",
+      "text": "我想玩那个。"
+    },
+    {
+      "key": "he_touched_me",
+      "text": "他碰我。"
+    },
+    {
+      "key": "laugh",
+      "text": "哈哈哈。"
+    }
+  ],
+  "action_responses": [
+    {
+      "key": "okay",
+      "text": "好。"
+    },
+    {
+      "key": "okay_teacher",
+      "text": "好的，老师。"
+    },
+    {
+      "key": "i_can_do_it",
+      "text": "我会。"
+    }
+  ]
+}

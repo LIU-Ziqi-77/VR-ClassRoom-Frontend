@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 49deec2075c108b4c97afc80567514fc
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 249882
+  packageName: High school classroom
+  packageVersion: 1.0
+  assetPath: Assets/High school classroom/Scripts/RotateMoveCamera.cs
+  uploadId: 571499

@@ -1,0 +1,52 @@
+[
+  {
+    "profile_id": "student_a_attentive",
+    "profile_label": "Attentive student, clear and quick",
+    "azure_voice_name": "zh-CN-XiaoxiaoNeural",
+    "pitch": "+8st",
+    "rate": "+5%",
+    "volume": "+0%",
+    "style_description": "clear, energetic, slightly child-like",
+    "hesitation_break_ms": 0
+  },
+  {
+    "profile_id": "student_b_shy",
+    "profile_label": "Shy student, soft and slow",
+    "azure_voice_name": "zh-CN-XiaoyiNeural",
+    "pitch": "+5st",
+    "rate": "-12%",
+    "volume": "-20%",
+    "style_description": "soft, hesitant, shy",
+    "hesitation_break_ms": 250
+  },
+  {
+    "profile_id": "student_c_impulsive",
+    "profile_label": "Impulsive student, fast and loud",
+    "azure_voice_name": "zh-CN-XiaoxiaoNeural",
+    "pitch": "+7st",
+    "rate": "+18%",
+    "volume": "+10%",
+    "style_description": "quick, loud, excited",
+    "hesitation_break_ms": 0
+  },
+  {
+    "profile_id": "student_d_uncertain",
+    "profile_label": "Uncertain student, hesitant and questioning",
+    "azure_voice_name": "zh-CN-XiaoxiaoNeural",
+    "pitch": "+4st",
+    "rate": "-8%",
+    "volume": "-8%",
+    "style_description": "hesitant, questioning, tentative",
+    "hesitation_break_ms": 300
+  },
+  {
+    "profile_id": "student_e_distracted",
+    "profile_label": "Distracted student, delayed and flat",
+    "azure_voice_name": "zh-CN-YunxiNeural",
+    "pitch": "+3st",
+    "rate": "-5%",
+    "volume": "-10%",
+    "style_description": "less engaged, slightly flat",
+    "hesitation_break_ms": 150
+  }
+]

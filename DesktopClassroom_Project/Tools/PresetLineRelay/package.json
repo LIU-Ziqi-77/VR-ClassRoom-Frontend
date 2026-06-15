@@ -1,0 +1,13 @@
+{
+  "name": "vr-classroom-preset-line-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Small dependency-free WebSocket relay for researcher preset-line controls.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

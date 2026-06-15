@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VR Classroom Researcher Console</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #20242a;
+      --muted: #68717d;
+      --line: #d9dee5;
+      --accent: #176c7d;
+      --accent-2: #7b4b24;
+      --danger: #a23a35;
+      --ok: #2b7a4b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0;
+      font-weight: 700;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: calc(100vh - 58px);
+    }
+    aside {
+      border-right: 1px solid var(--line);
+      padding: 16px;
+      background: #fbfcfd;
+    }
+    section {
+      padding: 16px 18px 28px;
+    }
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin: 12px 0 6px;
+    }
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      background: #fff;
+      font-size: 14px;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      text-align: left;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      text-align: center;
+      font-weight: 650;
+    }
+    button.warn {
+      border-color: #d6b38d;
+      color: var(--accent-2);
+    }
+    button.danger {
+      border-color: #e2b8b6;
+      color: var(--danger);
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+    .dot.ok { background: var(--ok); }
+    .student-grid,
+    .behavior-grid,
+    .line-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .student-grid { grid-template-columns: 1fr; }
+    .behavior-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .line-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+    .student {
+      border: 2px solid transparent;
+    }
+    .student.active {
+      border-color: var(--accent);
+      background: #edf8fa;
+    }
+    .group {
+      margin-bottom: 22px;
+    }
+    .group h2 {
+      margin: 0 0 10px;
+      font-size: 15px;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-top: 10px;
+    }
+    .log {
+      height: 180px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 6px;
+      padding: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    @media (max-width: 760px) {
+      main { grid-template-columns: 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>研究者控制台</h1>
+    <div class="status"><span id="dot" class="dot"></span><span id="status">未连接</span></div>
+  </header>
+
+  <main>
+    <aside>
+      <label for="room">Room</label>
+      <input id="room" value="demo" />
+
+      <label for="token">Token</label>
+      <input id="token" type="password" placeholder="如果服务器设置了 RELAY_TOKEN" />
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;">
+        <button class="primary" id="connect">连接</button>
+        <button id="disconnect">断开</button>
+      </div>
+
+      <div class="hint">
+        Unity 端和此网页必须连接同一个 room。公网部署时建议设置 RELAY_TOKEN。
+      </div>
+
+      <label>学生</label>
+      <div id="students" class="student-grid"></div>
+
+      <label>事件日志</label>
+      <div id="log" class="log"></div>
+    </aside>
+
+    <section>
+      <div class="group">
+        <h2>行为按钮</h2>
+        <div id="behaviors" class="behavior-grid"></div>
+      </div>
+
+      <div class="group">
+        <h2>预制台词</h2>
+        <div id="lines"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const students = [
+      { index: 1, name: "可可", profile: "student_01_xiaoxiao_girl" },
+      { index: 2, name: "李奥", profile: "student_03_yunjian_boy" },
+      { index: 3, name: "安娜", profile: "student_02_xiaoyi_girl" },
+    ];
+
+    const utteranceGroups = {
+      "物品回答": [
+        ["ruler_short", "尺子！"],
+        ["ruler_sentence", "这是尺子。"],
+        ["eraser_short", "橡皮！"],
+        ["eraser_sentence", "这是橡皮。"],
+        ["pencil_short", "铅笔！"],
+        ["pencil_sentence", "这是铅笔。"],
+        ["notebook_short", "本子！"],
+        ["notebook_sentence", "这是本子。"],
+      ],
+      "不确定/错误": [
+        ["uncertain_ruler", "嗯……是尺子吗？"],
+        ["uncertain_eraser", "是……橡皮吗？"],
+        ["maybe_this", "是这个吗？"],
+        ["i_dont_know", "我不知道。"],
+        ["i_cannot", "老师，我不会。"],
+        ["huh_what", "啊？什么？"],
+      ],
+      "课堂行为": [
+        ["teacher_i_know", "老师老师，我知道！"],
+        ["want_to_play", "我想玩那个。"],
+        ["he_touched_me", "他碰我。"],
+        ["laugh", "哈哈哈。"],
+      ],
+      "回应": [
+        ["okay", "好。"],
+        ["okay_teacher", "好的，老师。"],
+        ["i_can_do_it", "我会。"],
+      ],
+    };
+
+    const behaviors = [
+      ["raise_hand", "举手", 5, ""],
+      ["ask_question", "提问姿态", 5, ""],
+      ["distracted", "分心", 6, "warn"],
+      ["talk", "和同伴说话", 5, "warn"],
+      ["hit_desk", "拍桌", 3, "danger"],
+      ["scream", "尖叫动作", 2, "danger"],
+      ["lie_down", "趴桌/躺下", 6, "warn"],
+      ["recover", "恢复", 2, ""],
+      ["stop", "停止当前行为", 1, "danger"],
+    ];
+
+    let socket = null;
+    let selectedStudent = students[0];
+
+    const roomInput = document.getElementById("room");
+    const tokenInput = document.getElementById("token");
+    const statusEl = document.getElementById("status");
+    const dotEl = document.getElementById("dot");
+    const logEl = document.getElementById("log");
+
+    roomInput.value = localStorage.getItem("relay.room") || "demo";
+    tokenInput.value = localStorage.getItem("relay.token") || "";
+
+    function log(message) {
+      const line = `[${new Date().toLocaleTimeString()}] ${message}\n`;
+      logEl.textContent = line + logEl.textContent;
+    }
+
+    function setStatus(text, ok) {
+      statusEl.textContent = text;
+      dotEl.classList.toggle("ok", Boolean(ok));
+    }
+
+    function wsUrl() {
+      const room = encodeURIComponent(roomInput.value || "demo");
+      const token = encodeURIComponent(tokenInput.value || "");
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      let target = `${protocol}//${location.host}/ws?role=researcher&room=${room}`;
+      if (token) target += `&token=${token}`;
+      return target;
+    }
+
+    function connect() {
+      localStorage.setItem("relay.room", roomInput.value || "demo");
+      localStorage.setItem("relay.token", tokenInput.value || "");
+
+      if (socket) socket.close();
+      socket = new WebSocket(wsUrl());
+      setStatus("连接中", false);
+
+      socket.addEventListener("open", () => {
+        setStatus("已连接", true);
+        send({ type: "hello", client: "researcher" });
+        log("connected");
+      });
+
+      socket.addEventListener("message", (event) => {
+        log(`recv ${event.data}`);
+      });
+
+      socket.addEventListener("close", () => {
+        setStatus("已断开", false);
+        log("disconnected");
+      });
+
+      socket.addEventListener("error", () => {
+        setStatus("连接错误", false);
+        log("websocket error");
+      });
+    }
+
+    function disconnect() {
+      if (socket) socket.close();
+      socket = null;
+      setStatus("已断开", false);
+    }
+
+    function send(payload) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        log("not connected");
+        return;
+      }
+      socket.send(JSON.stringify(payload));
+    }
+
+    function sendPreset(utteranceKey, text) {
+      send({
+        type: "preset_line",
+        studentIndex: selectedStudent.index,
+        voiceProfileId: selectedStudent.profile,
+        utteranceKey,
+        text,
+        timestamp: Date.now() / 1000,
+      });
+      log(`sent ${selectedStudent.name}: ${text}`);
+    }
+
+    function sendBehavior(behavior, duration) {
+      send({
+        type: "behavior",
+        studentIndex: selectedStudent.index,
+        behavior,
+        duration,
+        timestamp: Date.now() / 1000,
+      });
+      log(`sent behavior ${selectedStudent.name}: ${behavior}`);
+    }
+
+    function renderStudents() {
+      const container = document.getElementById("students");
+      container.innerHTML = "";
+
+      for (const student of students) {
+        const button = document.createElement("button");
+        button.className = "student" + (student.index === selectedStudent.index ? " active" : "");
+        button.textContent = `${student.index}. ${student.name}`;
+        button.addEventListener("click", () => {
+          selectedStudent = student;
+          renderStudents();
+        });
+        container.appendChild(button);
+      }
+    }
+
+    function renderBehaviors() {
+      const container = document.getElementById("behaviors");
+      container.innerHTML = "";
+
+      for (const [key, label, duration, cls] of behaviors) {
+        const button = document.createElement("button");
+        button.className = cls;
+        button.textContent = label;
+        button.addEventListener("click", () => sendBehavior(key, duration));
+        container.appendChild(button);
+      }
+    }
+
+    function renderLines() {
+      const container = document.getElementById("lines");
+      container.innerHTML = "";
+
+      for (const [groupName, lines] of Object.entries(utteranceGroups)) {
+        const group = document.createElement("div");
+        group.className = "group";
+        const heading = document.createElement("h2");
+        heading.textContent = groupName;
+        const grid = document.createElement("div");
+        grid.className = "line-grid";
+
+        for (const [key, text] of lines) {
+          const button = document.createElement("button");
+          button.textContent = text;
+          button.title = key;
+          button.addEventListener("click", () => sendPreset(key, text));
+          grid.appendChild(button);
+        }
+
+        group.appendChild(heading);
+        group.appendChild(grid);
+        container.appendChild(group);
+      }
+    }
+
+    document.getElementById("connect").addEventListener("click", connect);
+    document.getElementById("disconnect").addEventListener("click", disconnect);
+
+    renderStudents();
+    renderBehaviors();
+    renderLines();
+  </script>
+</body>
+</html>
