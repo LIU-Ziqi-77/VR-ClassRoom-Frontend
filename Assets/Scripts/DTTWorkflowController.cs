@@ -89,6 +89,16 @@ public class DTTWorkflowController : MonoBehaviour
     [Header("Desktop Monitor")]
     public bool autoCreateMonitorReporter = true;
 
+    [Header("Keke Leave-Seat Disruption")]
+    public bool enableKekeLeaveSeatDuringAnnaDTT = true;
+    public string kekeLeaveSeatStudentName = "可可";
+    public string kekeLeaveSeatAllowedActiveStudentName = "安娜";
+    public float kekeLeaveSeatInitialDelaySeconds = 8f;
+    public Vector2 kekeLeaveSeatCheckIntervalSeconds = new Vector2(10f, 18f);
+    [Range(0f, 1f)] public float kekeLeaveSeatChancePerCheck = 0.35f;
+    public float kekeReturnDelaySeconds = 1f;
+    public string[] kekeReturnPhrases = { "起来", "回来", "回座位", "怎么躺下", "躺下啦", "躺下了" };
+
     private readonly List<DTTWorkflowStep> currentSteps = new List<DTTWorkflowStep>();
     private readonly List<DTTTeacherIntent> pendingDistractorIntents = new List<DTTTeacherIntent>();
     private readonly List<DTTTeacherIntent> completedDistractorIntents = new List<DTTTeacherIntent>();
@@ -104,6 +114,9 @@ public class DTTWorkflowController : MonoBehaviour
     private bool collectingDistractors;
     private GUIStyle statusStyle;
     private DTTMonitorReporter monitorReporter;
+    private BehaviorDemoController behaviorDemoController;
+    private float nextKekeLeaveSeatCheckTime;
+    private Coroutine kekeReturnRoutine;
 
     void Awake()
     {
@@ -114,6 +127,7 @@ public class DTTWorkflowController : MonoBehaviour
 
         AutoBindMissingReferences();
         EnsureMonitorReporter();
+        ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatInitialDelaySeconds);
     }
 
     void Start()
@@ -129,6 +143,7 @@ public class DTTWorkflowController : MonoBehaviour
         PollManagerSelection();
         PollTeachingAidEvents();
         PollKeyboardTesting();
+        PollKekeLeaveSeatDisruption();
     }
 
     public void HandleVoiceIntent(DTTVoiceIntentMessage message)
@@ -139,6 +154,11 @@ public class DTTWorkflowController : MonoBehaviour
         if (monitorReporter != null)
         {
             monitorReporter.SendVoiceIntent(message, intent);
+        }
+
+        if (TryHandleKekeReturnVoice(message))
+        {
+            return;
         }
 
         if (intent == DTTTeacherIntent.SelectStudent || !string.IsNullOrEmpty(message.student_id) || !string.IsNullOrEmpty(message.student_name))
@@ -234,6 +254,10 @@ public class DTTWorkflowController : MonoBehaviour
             StopActiveRoutine();
             LogEvent($"Selected {GetStudentLabel(binding)} / {binding.scenarioType}");
             UpdateStatus();
+            if (IsActiveStudentNamed(kekeLeaveSeatAllowedActiveStudentName))
+            {
+                ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatInitialDelaySeconds);
+            }
             TryAutoAdvanceCurrentStep();
         }
         else
@@ -711,6 +735,130 @@ public class DTTWorkflowController : MonoBehaviour
                 TryAcceptEvent(DTTWorkflowEvent.ReleaseAid);
             }
         }
+    }
+
+    private void PollKekeLeaveSeatDisruption()
+    {
+        if (!enableKekeLeaveSeatDuringAnnaDTT) return;
+        if (!IsActiveStudentNamed(kekeLeaveSeatAllowedActiveStudentName)) return;
+        if (IsScenarioComplete()) return;
+        if (IsKekeLeaveSeatActive()) return;
+        if (Time.time < nextKekeLeaveSeatCheckTime) return;
+
+        ScheduleNextKekeLeaveSeatCheck();
+
+        if (UnityEngine.Random.value > kekeLeaveSeatChancePerCheck) return;
+
+        BehaviorDemoController demo = GetBehaviorDemoController();
+        if (demo == null)
+        {
+            IgnoreEvent("KekeLeaveSeat", "BehaviorDemoController not found");
+            return;
+        }
+
+        if (demo.TriggerLeaveSeatForStudent(kekeLeaveSeatStudentName))
+        {
+            LogEvent($"{kekeLeaveSeatStudentName} random leave-seat disruption while teaching {GetStudentLabel(activeStudent)}");
+        }
+    }
+
+    private bool TryHandleKekeReturnVoice(DTTVoiceIntentMessage message)
+    {
+        if (!enableKekeLeaveSeatDuringAnnaDTT) return false;
+        if (!IsKekeLeaveSeatActive()) return false;
+        if (!MessageMentionsStudent(message, kekeLeaveSeatStudentName)) return false;
+
+        BehaviorDemoController demo = GetBehaviorDemoController();
+        if (demo == null)
+        {
+            IgnoreEvent("KekeReturn", "BehaviorDemoController not found");
+            return true;
+        }
+
+        if (kekeReturnRoutine == null)
+        {
+            kekeReturnRoutine = StartCoroutine(DelayedKekeReturnRoutine(demo));
+        }
+        ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatInitialDelaySeconds);
+        LogEvent($"{kekeLeaveSeatStudentName} return-to-seat voice intervention intercepted; active DTT student remains {GetStudentLabel(activeStudent)}");
+        UpdateStatus();
+        return true;
+    }
+
+    private IEnumerator DelayedKekeReturnRoutine(BehaviorDemoController demo)
+    {
+        float delay = Mathf.Max(0f, kekeReturnDelaySeconds);
+        if (delay > 0f)
+        {
+            yield return new WaitForSeconds(delay);
+        }
+
+        if (demo != null)
+        {
+            demo.ReturnLeaveSeatStudent(kekeLeaveSeatStudentName);
+        }
+
+        kekeReturnRoutine = null;
+    }
+
+    private bool IsKekeLeaveSeatActive()
+    {
+        BehaviorDemoController demo = GetBehaviorDemoController();
+        return demo != null && demo.IsLeaveSeatBehaviorActive(kekeLeaveSeatStudentName);
+    }
+
+    private bool MessageMentionsStudent(DTTVoiceIntentMessage message, string displayName)
+    {
+        if (message == null || string.IsNullOrEmpty(displayName)) return false;
+        string combined = $"{message.student_id} {message.student_name} {message.text}";
+        if (ContainsNormalized(combined, displayName)) return true;
+
+        DTTStudentScenarioBinding binding = FindStudentBinding("", displayName, "");
+        if (binding == null) return false;
+
+        if (ContainsNormalized(combined, binding.studentId) || ContainsNormalized(combined, binding.displayName))
+            return true;
+
+        for (int i = 0; i < binding.voiceSelectionAliases.Count; i++)
+        {
+            if (ContainsNormalized(combined, binding.voiceSelectionAliases[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsActiveStudentNamed(string displayName)
+    {
+        if (activeStudent == null || string.IsNullOrEmpty(displayName)) return false;
+        return Matches(activeStudent.displayName, displayName)
+               || Matches(activeStudent.studentId, displayName)
+               || ContainsNormalized(GetStudentLabel(activeStudent), displayName);
+    }
+
+    private bool IsScenarioComplete()
+    {
+        return activeStudent != null && currentSteps.Count > 0 && currentStepIndex >= currentSteps.Count;
+    }
+
+    private void ScheduleNextKekeLeaveSeatCheck(float delaySeconds = -1f)
+    {
+        float delay = delaySeconds >= 0f
+            ? delaySeconds
+            : UnityEngine.Random.Range(
+                Mathf.Max(0.1f, kekeLeaveSeatCheckIntervalSeconds.x),
+                Mathf.Max(kekeLeaveSeatCheckIntervalSeconds.x, kekeLeaveSeatCheckIntervalSeconds.y));
+        nextKekeLeaveSeatCheckTime = Time.time + delay;
+    }
+
+    private BehaviorDemoController GetBehaviorDemoController()
+    {
+        if (behaviorDemoController == null)
+        {
+            behaviorDemoController = FindObjectOfType<BehaviorDemoController>();
+        }
+
+        return behaviorDemoController;
     }
 
     private bool IsCurrentPhysicalStepAlreadySatisfied(DTTWorkflowEvent expectedEvent)

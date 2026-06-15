@@ -292,6 +292,52 @@ public class BehaviorDemoController : MonoBehaviour
         }
     }
 
+    public ProceduralBehaviorAnimator FindStudentByDisplayName(string displayName)
+    {
+        if (string.IsNullOrEmpty(displayName) || students == null) return null;
+
+        for (int i = 0; i < students.Count; i++)
+        {
+            ProceduralBehaviorAnimator student = students[i];
+            if (student != null && student.gameObject.name == displayName)
+                return student;
+        }
+
+        return null;
+    }
+
+    public bool IsLeaveSeatBehaviorActive(string displayName)
+    {
+        ProceduralBehaviorAnimator pba = FindStudentByDisplayName(displayName);
+        return pba != null
+               && pba.IsBehaviorActive
+               && (pba.CurrentBehaviorName == "离座" || pba.CurrentBehaviorName == "回座位");
+    }
+
+    public bool TriggerLeaveSeatForStudent(string displayName)
+    {
+        ProceduralBehaviorAnimator pba = FindStudentByDisplayName(displayName);
+        if (pba == null || IsLeaveSeatBehaviorActive(displayName)) return false;
+
+        Vector3 awayDir;
+        float moveDistance;
+        GetLeaveSeatTarget(pba, out awayDir, out moveDistance);
+        Vector3 target = pba.transform.position + awayDir * moveDistance;
+        pba.PlayLeaveSeat(target, leaveSeatMoveDuration, leaveSeatLayingClip, leaveSeatLayingRootYOffset);
+        Log($"Scripted leave seat: {displayName} -> {target}");
+        return true;
+    }
+
+    public bool ReturnLeaveSeatStudent(string displayName)
+    {
+        ProceduralBehaviorAnimator pba = FindStudentByDisplayName(displayName);
+        if (pba == null || !IsLeaveSeatBehaviorActive(displayName)) return false;
+
+        pba.PlayReturnToSeat(returnSeatMoveDuration, leaveSeatGettingUpClip);
+        Log($"Scripted return to seat: {displayName}");
+        return true;
+    }
+
     // ─── Trigger Wrapper ─────────────────────────────────────
 
     void DoTrigger(string name, System.Action action)
@@ -451,29 +497,33 @@ public class BehaviorDemoController : MonoBehaviour
         {
             Vector3 awayDir;
             float moveDistance;
-
-            if (pba.gameObject.name == fixedRightLeaveStudentName)
-            {
-                awayDir = pba.transform.right;
-                moveDistance = fixedRightLeaveDistance;
-            }
-            else
-            {
-                // Walk sideways into the aisle (avoids clipping through desk behind).
-                // Students face forward; backward = into the next desk row.
-                float side = Random.value > 0.5f ? 1f : -1f;
-                awayDir = pba.transform.right * side + pba.transform.forward * 0.3f;
-                moveDistance = leaveSeatDistance;
-            }
-
-            awayDir.y = 0;
-            awayDir.Normalize();
+            GetLeaveSeatTarget(pba, out awayDir, out moveDistance);
             Vector3 target = pba.transform.position + awayDir * moveDistance;
 
             pba.PlayLeaveSeat(target, leaveSeatMoveDuration, leaveSeatLayingClip, leaveSeatLayingRootYOffset);
             _lastAction = "离座跑开";
             Log($"Leave Seat → {target}");
         }
+    }
+
+    void GetLeaveSeatTarget(ProceduralBehaviorAnimator pba, out Vector3 awayDir, out float moveDistance)
+    {
+        if (pba.gameObject.name == fixedRightLeaveStudentName)
+        {
+            awayDir = pba.transform.right;
+            moveDistance = fixedRightLeaveDistance;
+        }
+        else
+        {
+            // Walk sideways into the aisle (avoids clipping through desk behind).
+            // Students face forward; backward = into the next desk row.
+            float side = Random.value > 0.5f ? 1f : -1f;
+            awayDir = pba.transform.right * side + pba.transform.forward * 0.3f;
+            moveDistance = leaveSeatDistance;
+        }
+
+        awayDir.y = 0;
+        awayDir.Normalize();
     }
 
     public void TriggerLieDown()
