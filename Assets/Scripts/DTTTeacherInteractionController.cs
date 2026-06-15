@@ -12,6 +12,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
 {
     [Header("References")]
     public DTTTeachingAidManager manager;
+    public DTTWorkflowController workflowController;
     public Transform rayOriginOverride;
     public Transform holdAnchorOverride;
 
@@ -28,6 +29,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
     public bool triggerSelects = true;
     [FormerlySerializedAs("gripHoldsAid")]
     public bool gripTogglesAidHold = true;
+    public bool triggerCanReturnKekeLeaveSeat = true;
 
     [Header("Keyboard Fallback")]
     public bool keyboardFallback = true;
@@ -55,6 +57,11 @@ public class DTTTeacherInteractionController : MonoBehaviour
         {
             manager = FindObjectOfType<DTTTeachingAidManager>();
         }
+
+        if (workflowController == null)
+        {
+            workflowController = FindObjectOfType<DTTWorkflowController>();
+        }
     }
 
     void Update()
@@ -63,6 +70,11 @@ public class DTTTeacherInteractionController : MonoBehaviour
         {
             manager = FindObjectOfType<DTTTeachingAidManager>();
             if (manager == null) return;
+        }
+
+        if (workflowController == null)
+        {
+            workflowController = FindObjectOfType<DTTWorkflowController>();
         }
 
         hasControllerPoseThisFrame = UpdateRuntimeControllerAnchor();
@@ -123,7 +135,15 @@ public class DTTTeacherInteractionController : MonoBehaviour
 
         if (student != null)
         {
-            manager.SelectStudent(student);
+            if (triggerCanReturnKekeLeaveSeat &&
+                workflowController != null &&
+                workflowController.TryHandleKekeReturnPointer(student))
+            {
+                Debug.Log($"[DTT] Select ray requested Keke return-to-seat: {student.gameObject.name}");
+                return;
+            }
+
+            Debug.Log($"[DTT] Student ray selection disabled; use voice to select students: {student.gameObject.name}");
             return;
         }
 
@@ -143,7 +163,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
             }
             else if (student != null)
             {
-                currentAimLabel = $"Aim: student - {student.gameObject.name}";
+                currentAimLabel = $"Aim: student - {student.gameObject.name} (voice select only)";
             }
             return;
         }
@@ -314,7 +334,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
         string heldAid = manager != null && manager.heldAid != null
             ? manager.heldAid.displayName
             : "none";
-        string hint = $"{currentAimLabel}\nJ select | K toggle pick up/return aid | 1/2/3 select student | 4-0 gaze phase\nSelected student: {selectedStudent} | Selected aid: {selectedAid} | Held aid: {heldAid}";
+        string hint = $"{currentAimLabel}\nJ select aid/Keke return | K toggle pick up/return aid | student selection by voice\nSelected student: {selectedStudent} | Selected aid: {selectedAid} | Held aid: {heldAid}";
 
         GUI.Box(new Rect(16f, Screen.height - 92f, 620f, 76f), hint, hintStyle);
     }

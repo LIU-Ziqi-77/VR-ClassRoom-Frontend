@@ -73,6 +73,7 @@ public class DTTWorkflowController : MonoBehaviour
 
     [Header("Desktop Test Keys")]
     public bool enableKeyboardTesting = true;
+    public bool allowKeyboardStudentSelectionTesting = false;
     public KeyCode askKey = KeyCode.Q;
     public KeyCode correctionKey = KeyCode.W;
     public KeyCode halfPromptKey = KeyCode.E;
@@ -93,9 +94,8 @@ public class DTTWorkflowController : MonoBehaviour
     public bool enableKekeLeaveSeatDuringAnnaDTT = true;
     public string kekeLeaveSeatStudentName = "可可";
     public string kekeLeaveSeatAllowedActiveStudentName = "安娜";
-    public float kekeLeaveSeatInitialDelaySeconds = 8f;
-    public Vector2 kekeLeaveSeatCheckIntervalSeconds = new Vector2(10f, 18f);
-    [Range(0f, 1f)] public float kekeLeaveSeatChancePerCheck = 0.35f;
+    public float kekeLeaveSeatInitialDelaySeconds = 20f;
+    public float kekeLeaveSeatIntervalSeconds = 45f;
     public float kekeReturnDelaySeconds = 1f;
     public string[] kekeReturnPhrases = { "起来", "回来", "回座位", "怎么躺下", "躺下啦", "躺下了" };
 
@@ -747,8 +747,6 @@ public class DTTWorkflowController : MonoBehaviour
 
         ScheduleNextKekeLeaveSeatCheck();
 
-        if (UnityEngine.Random.value > kekeLeaveSeatChancePerCheck) return;
-
         BehaviorDemoController demo = GetBehaviorDemoController();
         if (demo == null)
         {
@@ -758,7 +756,7 @@ public class DTTWorkflowController : MonoBehaviour
 
         if (demo.TriggerLeaveSeatForStudent(kekeLeaveSeatStudentName))
         {
-            LogEvent($"{kekeLeaveSeatStudentName} random leave-seat disruption while teaching {GetStudentLabel(activeStudent)}");
+            LogEvent($"{kekeLeaveSeatStudentName} timed leave-seat disruption while teaching {GetStudentLabel(activeStudent)}");
         }
     }
 
@@ -768,6 +766,21 @@ public class DTTWorkflowController : MonoBehaviour
         if (!IsKekeLeaveSeatActive()) return false;
         if (!MessageMentionsStudent(message, kekeLeaveSeatStudentName)) return false;
 
+        return TryStartKekeReturnIntervention("voice");
+    }
+
+    public bool TryHandleKekeReturnPointer(DTTTargetStudentMarker marker)
+    {
+        if (!enableKekeLeaveSeatDuringAnnaDTT) return false;
+        if (marker == null) return false;
+        if (!IsKekeLeaveSeatActive()) return false;
+        if (!MarkerMatchesStudentName(marker, kekeLeaveSeatStudentName)) return false;
+
+        return TryStartKekeReturnIntervention("pointer");
+    }
+
+    private bool TryStartKekeReturnIntervention(string source)
+    {
         BehaviorDemoController demo = GetBehaviorDemoController();
         if (demo == null)
         {
@@ -780,7 +793,7 @@ public class DTTWorkflowController : MonoBehaviour
             kekeReturnRoutine = StartCoroutine(DelayedKekeReturnRoutine(demo));
         }
         ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatInitialDelaySeconds);
-        LogEvent($"{kekeLeaveSeatStudentName} return-to-seat voice intervention intercepted; active DTT student remains {GetStudentLabel(activeStudent)}");
+        LogEvent($"{kekeLeaveSeatStudentName} return-to-seat {source} intervention intercepted; active DTT student remains {GetStudentLabel(activeStudent)}");
         UpdateStatus();
         return true;
     }
@@ -805,6 +818,28 @@ public class DTTWorkflowController : MonoBehaviour
     {
         BehaviorDemoController demo = GetBehaviorDemoController();
         return demo != null && demo.IsLeaveSeatBehaviorActive(kekeLeaveSeatStudentName);
+    }
+
+    private bool MarkerMatchesStudentName(DTTTargetStudentMarker marker, string displayName)
+    {
+        if (marker == null || string.IsNullOrEmpty(displayName)) return false;
+        if (ContainsNormalized(marker.gameObject.name, displayName)) return true;
+
+        DTTStudentScenarioBinding binding = FindStudentBinding(marker);
+        if (binding == null) return false;
+
+        if (Matches(binding.studentId, displayName) ||
+            Matches(binding.displayName, displayName) ||
+            ContainsNormalized(GetStudentLabel(binding), displayName))
+            return true;
+
+        for (int i = 0; i < binding.voiceSelectionAliases.Count; i++)
+        {
+            if (ContainsNormalized(binding.voiceSelectionAliases[i], displayName))
+                return true;
+        }
+
+        return false;
     }
 
     private bool MessageMentionsStudent(DTTVoiceIntentMessage message, string displayName)
@@ -845,9 +880,7 @@ public class DTTWorkflowController : MonoBehaviour
     {
         float delay = delaySeconds >= 0f
             ? delaySeconds
-            : UnityEngine.Random.Range(
-                Mathf.Max(0.1f, kekeLeaveSeatCheckIntervalSeconds.x),
-                Mathf.Max(kekeLeaveSeatCheckIntervalSeconds.x, kekeLeaveSeatCheckIntervalSeconds.y));
+            : Mathf.Max(0.1f, kekeLeaveSeatIntervalSeconds);
         nextKekeLeaveSeatCheckTime = Time.time + delay;
     }
 
@@ -937,9 +970,12 @@ public class DTTWorkflowController : MonoBehaviour
     {
         if (!enableKeyboardTesting) return;
 
-        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha1)) SelectStudentByIndex(0);
-        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha2)) SelectStudentByIndex(1);
-        if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha3)) SelectStudentByIndex(2);
+        if (allowKeyboardStudentSelectionTesting)
+        {
+            if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha1)) SelectStudentByIndex(0);
+            if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha2)) SelectStudentByIndex(1);
+            if (DesktopInputBridge.GetKeyDown(KeyCode.Alpha3)) SelectStudentByIndex(2);
+        }
         if (DesktopInputBridge.GetKeyDown(askKey)) HandleTeacherIntent(DTTTeacherIntent.WhatIsThis, "keyboard");
         if (DesktopInputBridge.GetKeyDown(correctionKey)) HandleTeacherIntent(DTTTeacherIntent.RetryOrCorrection, "keyboard");
         if (DesktopInputBridge.GetKeyDown(halfPromptKey)) HandleTeacherIntent(DTTTeacherIntent.HalfPrompt, "keyboard");
