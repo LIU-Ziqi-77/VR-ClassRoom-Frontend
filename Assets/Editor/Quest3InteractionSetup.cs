@@ -26,6 +26,10 @@ using UnityEngine.XR.OpenXR.Features.MetaQuestSupport;
 public static class Quest3InteractionSetup
 {
     private const string TargetScenePath = "Assets/Scenes/HighSchoolClassroom_Demo.unity";
+    private const string MetaQuestTouchPlusRightModelPath =
+        "Packages/com.meta.xr.sdk.core/Meshes/MetaQuestTouchPlus/MetaQuestTouchPlus_Right.fbx";
+    private const float CentimetersToMeters = 0.01f;
+    private static readonly Vector3 MetaQuestTouchPlusModelScale = Vector3.one * CentimetersToMeters;
 
     [MenuItem("Tools/VR Classroom/Setup Quest 3 Interaction")]
     public static void SetupQuest3Interaction()
@@ -249,6 +253,7 @@ public static class Quest3InteractionSetup
 
         ConfigureDttController(rightAnchor);
         ConfigureXriProbeInteractors(leftAnchor, rightAnchor);
+        ConfigureRightControllerHint(rightAnchor);
         ConfigureTeachingAids();
 
         EditorSceneManager.MarkSceneDirty(scene);
@@ -330,6 +335,8 @@ public static class Quest3InteractionSetup
         visual.showOnlyWhenControllerPose = true;
         visual.rayDistance = 12f;
         visual.raycastMask = ~0;
+        visual.idleColor = new Color(0.25f, 1f, 0.35f, 0.95f);
+        visual.hitColor = new Color(0.25f, 1f, 0.35f, 1f);
         visual.fallbackToCameraWhenNoController = true;
         visual.cameraLocalPosition = node == XRNode.RightHand
             ? new Vector3(0.18f, -0.22f, 0.45f)
@@ -422,6 +429,68 @@ public static class Quest3InteractionSetup
 
         EditorUtility.SetDirty(anchor);
         EditorUtility.SetDirty(directTransform.gameObject);
+    }
+
+    private static void ConfigureRightControllerHint(Transform rightAnchor)
+    {
+        if (rightAnchor == null) return;
+
+        Transform hintRoot = rightAnchor.Find("Meta Right Controller Button Hints");
+        if (hintRoot == null)
+        {
+            GameObject hintRootGo = new GameObject("Meta Right Controller Button Hints");
+            hintRootGo.transform.SetParent(rightAnchor, false);
+            hintRoot = hintRootGo.transform;
+        }
+
+        Transform legacyModelRoot = hintRoot.Find("Official Meta Right Controller Model");
+        if (legacyModelRoot != null)
+        {
+            legacyModelRoot.gameObject.SetActive(false);
+            legacyModelRoot.name = "Legacy Runtime-Selected Meta Controller Model";
+        }
+
+        Transform modelRoot = hintRoot.Find("Official Meta Quest 3 Touch Plus Right Controller Model");
+        if (modelRoot == null)
+        {
+            GameObject controllerModel = AssetDatabase.LoadAssetAtPath<GameObject>(MetaQuestTouchPlusRightModelPath);
+            if (controllerModel != null)
+            {
+                GameObject modelInstance = PrefabUtility.InstantiatePrefab(controllerModel, hintRoot) as GameObject;
+                if (modelInstance != null)
+                {
+                    modelInstance.name = "Official Meta Quest 3 Touch Plus Right Controller Model";
+                    modelInstance.transform.localPosition = Vector3.zero;
+                    modelInstance.transform.localRotation = Quaternion.identity;
+                    modelInstance.transform.localScale = MetaQuestTouchPlusModelScale;
+                    modelRoot = modelInstance.transform;
+                }
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "[Quest3InteractionSetup] Meta Quest 3 Touch Plus right controller model is not available yet. " +
+                    "Open Unity after Package Manager resolves com.meta.xr.sdk.core, then run setup again.");
+            }
+        }
+        else
+        {
+            modelRoot.localPosition = Vector3.zero;
+            modelRoot.localRotation = Quaternion.identity;
+            modelRoot.localScale = MetaQuestTouchPlusModelScale;
+        }
+
+        RightControllerHintPanel hintPanel = hintRoot.GetComponent<RightControllerHintPanel>();
+        if (hintPanel == null)
+        {
+            hintPanel = hintRoot.gameObject.AddComponent<RightControllerHintPanel>();
+        }
+
+        hintPanel.controllerNode = XRNode.RightHand;
+        hintPanel.RebuildHints();
+
+        EditorUtility.SetDirty(hintRoot.gameObject);
+        if (modelRoot != null) EditorUtility.SetDirty(modelRoot.gameObject);
     }
 
     private static void ConfigureTeachingAids()

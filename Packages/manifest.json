@@ -1,5 +1,15 @@
 {
+  "scopedRegistries": [
+    {
+      "name": "Meta XR",
+      "url": "https://npm.developer.oculus.com",
+      "scopes": [
+        "com.meta.xr"
+      ]
+    }
+  ],
   "dependencies": {
+    "com.meta.xr.sdk.interaction.ovr": "201.0.0",
     "com.unity.device-simulator.devices": "1.0.0",
     "com.unity.feature.vr": "1.0.1",
     "com.unity.feature.worldbuilding": "1.0.1",

@@ -17,7 +17,7 @@ public class QuestControllerRayVisual : MonoBehaviour
     public bool showRay = true;
     public bool showOnlyWhenControllerPose = true;
     public float lineWidth = 0.012f;
-    public Color idleColor = new Color(0.15f, 0.95f, 1f, 0.95f);
+    public Color idleColor = new Color(0.25f, 1f, 0.35f, 0.95f);
     public Color hitColor = new Color(0.25f, 1f, 0.35f, 1f);
     public float reticleSize = 0.035f;
 
@@ -91,6 +91,8 @@ public class QuestControllerRayVisual : MonoBehaviour
 
         Vector3 endPoint = hitSomething ? hit.point : transform.position + transform.forward * rayDistance;
         Color color = hitSomething ? hitColor : idleColor;
+        ApplyColor(lineMaterial, color);
+        ApplyColor(reticleMaterial, hitColor);
 
         if (lineRenderer != null)
         {
@@ -178,8 +180,16 @@ public class QuestControllerRayVisual : MonoBehaviour
             color = color
         };
 
+        ApplyColor(material, color);
+        return material;
+    }
+
+    private static void ApplyColor(Material material, Color color)
+    {
+        if (material == null) return;
+
         if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
         if (material.HasProperty("_Color")) material.SetColor("_Color", color);
-        return material;
+        material.color = color;
     }
 }
