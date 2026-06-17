@@ -83,7 +83,7 @@ public class DTTWorkflowController : MonoBehaviour
     public KeyCode touchNoseKey = KeyCode.N;
 
     [Header("Debug")]
-    public bool showDesktopStatus = true;
+    public bool showDesktopStatus = false;
     public bool logIgnoredEvents = true;
     public List<string> eventLog = new List<string>();
 

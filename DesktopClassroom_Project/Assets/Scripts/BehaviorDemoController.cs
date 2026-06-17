@@ -88,6 +88,8 @@ public class BehaviorDemoController : MonoBehaviour
 
     [Header("State")]
     [SerializeField] int selectedIndex;
+    [Tooltip("Runtime debug controls for local behavior testing. Keep off for the desktop teacher-facing build.")]
+    public bool showDemoOverlay = false;
     [Tooltip("Prevents WASD camera movement from also triggering W/A/D behavior shortcuts.")]
     public bool suppressKeyboardShortcutsDuringCameraControl = true;
     public float cameraShortcutSuppressionGrace = 0.2f;
@@ -638,6 +640,8 @@ public class BehaviorDemoController : MonoBehaviour
 
     void OnGUI()
     {
+        if (!showDemoOverlay) return;
+
         GUI.enabled = true;
 
         float w = 320, h = 520;

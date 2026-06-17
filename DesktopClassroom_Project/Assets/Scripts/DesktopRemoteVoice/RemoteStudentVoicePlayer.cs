@@ -376,6 +376,10 @@ public class RemoteStudentVoicePlayer : MonoBehaviour
                 Vector3 target = transform.position + transform.right * 1.2f + transform.forward * 0.35f;
                 proceduralAnimator.PlayLeaveSeat(target, Mathf.Clamp(duration, 1f, 4f));
                 return true;
+            case "returnseat":
+            case "backtoseat":
+                proceduralAnimator.PlayReturnToSeat(Mathf.Clamp(duration, 1f, 4f));
+                return true;
         }
 
         return false;

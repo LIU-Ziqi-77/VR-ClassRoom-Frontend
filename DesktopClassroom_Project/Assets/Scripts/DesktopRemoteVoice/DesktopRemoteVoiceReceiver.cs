@@ -14,7 +14,7 @@ public class DesktopRemoteVoiceReceiver : MonoBehaviour
     public int listenPort = 5066;
     public int maxPacketsProcessedPerFrame = 80;
     public float rediscoverInterval = 2f;
-    public bool showStatusOverlay = true;
+    public bool showStatusOverlay = false;
     public bool logPackets = false;
 
     private readonly ConcurrentQueue<RemoteVoicePacket> pendingPackets =

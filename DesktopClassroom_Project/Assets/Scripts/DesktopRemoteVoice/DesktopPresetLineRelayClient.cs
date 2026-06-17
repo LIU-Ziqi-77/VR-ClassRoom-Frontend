@@ -24,7 +24,7 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
 
     [Header("Debug")]
     public bool logMessages = true;
-    public bool showStatusOverlay = true;
+    public bool showStatusOverlay = false;
 
     private readonly ConcurrentQueue<RemoteVoicePacket> pendingPackets =
         new ConcurrentQueue<RemoteVoicePacket>();
@@ -185,7 +185,7 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
             RegisterStudentObject(animator.gameObject);
         }
 
-        players.Sort((a, b) => string.CompareOrdinal(a.gameObject.name, b.gameObject.name));
+        players.Sort(CompareStudentPlayers);
 
         for (int i = 0; i < players.Count; i++)
         {
@@ -306,10 +306,16 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
 
         switch (packet.type)
         {
+            case RemoteVoicePacketTypes.SelectStudent:
+                SelectStudent(player);
+                status = $"selected {player.studentDisplayName}";
+                break;
             case RemoteVoicePacketTypes.PresetLine:
+                SelectStudent(player);
                 PlayPresetLine(player, packet);
                 break;
             case RemoteVoicePacketTypes.Behavior:
+                SelectStudent(player);
                 player.TriggerBehavior(packet.behavior, packet.duration);
                 status = $"behavior {packet.behavior} -> {player.studentDisplayName}";
                 break;
@@ -363,6 +369,55 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
         }
 
         return null;
+    }
+
+    private void SelectStudent(RemoteStudentVoicePlayer player)
+    {
+        if (player == null) return;
+
+        BehaviorDemoController demo = FindObjectOfType<BehaviorDemoController>();
+        if (demo != null)
+        {
+            demo.SelectStudentByGameObject(player.gameObject);
+        }
+
+        DTTTeachingAidManager manager = DTTTeachingAidManager.Instance;
+        if (manager != null)
+        {
+            DTTTargetStudentMarker marker = player.GetComponentInParent<DTTTargetStudentMarker>();
+            if (marker == null)
+            {
+                marker = player.GetComponentInChildren<DTTTargetStudentMarker>();
+            }
+            if (marker == null)
+            {
+                marker = player.gameObject.AddComponent<DTTTargetStudentMarker>();
+            }
+
+            manager.SelectStudent(marker);
+        }
+    }
+
+    private static int CompareStudentPlayers(RemoteStudentVoicePlayer a, RemoteStudentVoicePlayer b)
+    {
+        int orderA = PreferredStudentOrder(a);
+        int orderB = PreferredStudentOrder(b);
+        if (orderA != orderB) return orderA.CompareTo(orderB);
+
+        string nameA = a != null ? a.gameObject.name : "";
+        string nameB = b != null ? b.gameObject.name : "";
+        return string.CompareOrdinal(nameA, nameB);
+    }
+
+    private static int PreferredStudentOrder(RemoteStudentVoicePlayer player)
+    {
+        if (player == null) return int.MaxValue;
+
+        string combined = $"{player.studentDisplayName} {player.studentId} {player.gameObject.name}";
+        if (combined.Contains("可可") || combined.Contains("Ele_student1")) return 0;
+        if (combined.Contains("李奥") || combined.Contains("Ele_student2")) return 1;
+        if (combined.Contains("安娜") || combined.Contains("Ele_student3")) return 2;
+        return 100;
     }
 
     private string GetVoiceProfile(int studentIndex)

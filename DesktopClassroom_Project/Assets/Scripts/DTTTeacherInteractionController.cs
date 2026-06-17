@@ -37,8 +37,8 @@ public class DTTTeacherInteractionController : MonoBehaviour
     public KeyCode holdKey = KeyCode.K;
 
     [Header("Desktop Test UI")]
-    public bool showDesktopReticle = true;
-    public bool showDesktopSelectionHint = true;
+    public bool showDesktopReticle = false;
+    public bool showDesktopSelectionHint = false;
     public Color reticleColor = new Color(0.1f, 0.95f, 1f, 0.95f);
 
     private readonly List<InputDevice> devices = new List<InputDevice>();

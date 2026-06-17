@@ -114,6 +114,7 @@ public class BehaviorDemoSetup : MonoBehaviour
             if (visuals == null)
                 visuals = go.AddComponent<StudentBehaviorVisuals>();
             visuals.displayName = displayName;
+            visuals.useScreenSpaceLabel = false;
 
             students.Add(pba);
             Debug.Log($"[BehaviorDemoSetup]   ✓ {displayName} ready");
@@ -124,6 +125,7 @@ public class BehaviorDemoSetup : MonoBehaviour
         if (demo == null)
             demo = gameObject.AddComponent<BehaviorDemoController>();
         demo.students = students;
+        demo.showDemoOverlay = false;
         if (clappingClip != null)
         {
             demo.clappingClip = clappingClip;

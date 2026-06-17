@@ -112,12 +112,14 @@
     }
     .dot.ok { background: var(--ok); }
     .student-grid,
+    .quick-grid,
     .behavior-grid,
     .line-grid {
       display: grid;
       gap: 8px;
     }
     .student-grid { grid-template-columns: 1fr; }
+    .quick-grid { grid-template-columns: 1fr; }
     .behavior-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .line-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
     .student {
@@ -182,6 +184,11 @@
 
       <label>学生</label>
       <div id="students" class="student-grid"></div>
+
+      <label>快捷控制</label>
+      <div class="quick-grid">
+        <button class="warn" id="return-keke">可可回座位</button>
+      </div>
 
       <label>事件日志</label>
       <div id="log" class="log"></div>
@@ -293,6 +300,7 @@
       socket.addEventListener("open", () => {
         setStatus("已连接", true);
         send({ type: "hello", client: "researcher" });
+        sendStudentSelection();
         log("connected");
       });
 
@@ -348,6 +356,28 @@
       log(`sent behavior ${selectedStudent.name}: ${behavior}`);
     }
 
+    function sendKekeReturnSeat() {
+      send({
+        type: "behavior",
+        studentIndex: 1,
+        behavior: "return_seat",
+        duration: 2,
+        timestamp: Date.now() / 1000,
+      });
+      log("sent behavior 可可: return_seat");
+    }
+
+    function sendStudentSelection() {
+      send({
+        type: "select_student",
+        studentIndex: selectedStudent.index,
+        voiceProfileId: selectedStudent.profile,
+        text: selectedStudent.name,
+        timestamp: Date.now() / 1000,
+      });
+      log(`selected ${selectedStudent.name}`);
+    }
+
     function renderStudents() {
       const container = document.getElementById("students");
       container.innerHTML = "";
@@ -359,6 +389,7 @@
         button.addEventListener("click", () => {
           selectedStudent = student;
           renderStudents();
+          sendStudentSelection();
         });
         container.appendChild(button);
       }
@@ -405,6 +436,7 @@
 
     document.getElementById("connect").addEventListener("click", connect);
     document.getElementById("disconnect").addEventListener("click", disconnect);
+    document.getElementById("return-keke").addEventListener("click", sendKekeReturnSeat);
 
     renderStudents();
     renderBehaviors();

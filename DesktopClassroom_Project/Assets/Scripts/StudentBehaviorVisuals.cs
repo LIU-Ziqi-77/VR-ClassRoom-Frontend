@@ -23,6 +23,9 @@ public class StudentBehaviorVisuals : MonoBehaviour
     [Tooltip("World-space height offset above the avatar root for the label.")]
     public float labelHeightOffset = 1.35f;
 
+    [Tooltip("Legacy screen-space label used during debugging. Leave off for the desktop teacher-facing build.")]
+    public bool useScreenSpaceLabel = false;
+
     [Header("VR World Label")]
     public bool useWorldSpaceLabel = true;
     public float worldLabelScale = 0.2f;
@@ -78,6 +81,7 @@ public class StudentBehaviorVisuals : MonoBehaviour
 
     void OnGUI()
     {
+        if (!useScreenSpaceLabel) return;
         if (Camera.main == null) return;
 
         EnsureStyles();

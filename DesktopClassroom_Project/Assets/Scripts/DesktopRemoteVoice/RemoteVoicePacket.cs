@@ -26,5 +26,6 @@ public static class RemoteVoicePacketTypes
     public const string VoiceStop = "voice_stop";
     public const string PresetLine = "preset_line";
     public const string Behavior = "behavior";
+    public const string SelectStudent = "select_student";
     public const string Refresh = "refresh";
 }
