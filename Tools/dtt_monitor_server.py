@@ -83,8 +83,32 @@ INDEX_HTML = r"""<!doctype html>
     .warn { color: #ffd166; }
     .error { color: #ff6b6b; }
     .ok { color: #8bd17c; }
+    .workflow-board { grid-column: 1 / -1; padding: 12px; }
+    .board-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .legend { display: flex; gap: 7px; flex-wrap: wrap; color: #9ca6b8; font-size: 12px; }
+    .pill { border: 1px solid #333a46; border-radius: 999px; padding: 3px 8px; background: #11151c; }
+    .scenario-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .scenario-card { background: #10151d; border: 1px solid #29313d; border-radius: 6px; overflow: hidden; }
+    .scenario-card.active { border-color: #5b9cff; box-shadow: 0 0 0 1px rgba(91,156,255,.28) inset; }
+    .scenario-title { padding: 10px; border-bottom: 1px solid #29313d; background: #141a22; display: flex; justify-content: space-between; gap: 8px; }
+    .scenario-name { font-size: 13px; font-weight: 750; }
+    .scenario-desc { color: #9ca6b8; font-size: 12px; margin-top: 3px; line-height: 1.25; }
+    .scenario-score { color: #cbd2df; font-size: 12px; white-space: nowrap; text-align: right; }
+    .steps { list-style: none; margin: 0; padding: 8px; display: grid; gap: 6px; }
+    .step-row { display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 7px; border-radius: 6px; border: 1px solid #28313d; background: #0d1117; }
+    .step-row.done { border-color: rgba(139,209,124,.48); background: rgba(139,209,124,.08); }
+    .step-row.current { border-color: rgba(91,156,255,.75); background: rgba(91,156,255,.12); }
+    .step-row.missed { border-color: rgba(255,107,107,.65); background: rgba(255,107,107,.10); }
+    .step-row.pending { opacity: .68; }
+    .step-num { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; background: #252d38; color: #eef1f6; font-size: 11px; font-weight: 750; }
+    .step-row.done .step-num { background: #8bd17c; color: #0b1309; }
+    .step-row.current .step-num { background: #5b9cff; color: #07111f; }
+    .step-row.missed .step-num { background: #ff6b6b; color: #160808; }
+    .step-name { color: #f5f7fb; font-size: 12px; line-height: 1.25; overflow-wrap: anywhere; }
+    .step-event { color: #9ca6b8; font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
     @media (max-width: 900px) {
       main { grid-template-columns: 1fr; }
+      .scenario-grid { grid-template-columns: 1fr; }
       #logs { height: 420px; }
     }
   </style>
@@ -95,6 +119,18 @@ INDEX_HTML = r"""<!doctype html>
     <div id="connection" class="value">connecting...</div>
   </header>
   <main>
+    <section class="workflow-board">
+      <div class="board-head">
+        <h2>Scenario Step Tracker</h2>
+        <div class="legend">
+          <span class="pill">completed</span>
+          <span class="pill">current</span>
+          <span class="pill">missed</span>
+          <span class="pill">pending</span>
+        </div>
+      </div>
+      <div id="scenarioGrid" class="scenario-grid"></div>
+    </section>
     <div>
       <section>
         <h2>State Machine</h2>
@@ -137,7 +173,151 @@ INDEX_HTML = r"""<!doctype html>
   </main>
   <script>
     const logs = document.getElementById('logs');
+    const SCENARIOS = {
+      DirectCorrect: {
+        title: 'Direct correct',
+        description: 'Correct answer after the first SD.',
+        steps: [
+          ['SelectCorrectAid', 'Select the correct teaching aid'],
+          ['HoldAid', 'Pick up / present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['PositiveReinforcement', 'Praise the student']
+        ]
+      },
+      HalfPromptThenCorrect: {
+        title: 'Half prompt then correct',
+        description: 'Initial error, half prompt, transfer, distractor, final probe.',
+        steps: [
+          ['SelectCorrectAid', 'Select the correct teaching aid'],
+          ['HoldAid', 'Pick up / present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['RetryOrCorrection', 'Teacher gives correction'],
+          ['ReleaseAid', 'Put the teaching aid away'],
+          ['PauseElapsed', 'Wait 2 seconds'],
+          ['HoldAid', 'Re-present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['HalfPrompt', 'Immediately provide half prompt'],
+          ['ReleaseAid', 'Put the teaching aid away without feedback'],
+          ['HoldAid', 'Re-present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['ReleaseAid', 'Put the teaching aid away without feedback'],
+          ['Distractor', 'Give distractor instruction'],
+          ['HoldAid', 'Re-present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['PositiveReinforcement', 'Praise the student']
+        ]
+      },
+      FullPromptAfterHalfPromptError: {
+        title: 'Full prompt after half-prompt error',
+        description: 'Initial error, half prompt error, full prompt, transfer, distractor, final probe.',
+        steps: [
+          ['SelectCorrectAid', 'Select the correct teaching aid'],
+          ['HoldAid', 'Pick up / present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['RetryOrCorrection', 'Teacher gives correction'],
+          ['ReleaseAid', 'Put the teaching aid away'],
+          ['PauseElapsed', 'Wait 2 seconds'],
+          ['HoldAid', 'Re-present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['HalfPrompt', 'Immediately provide half prompt'],
+          ['ReleaseAid', 'Put the teaching aid away without feedback'],
+          ['HoldAid', 'Re-present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['FullPrompt', 'Immediately provide full prompt'],
+          ['ReleaseAid', 'Put the teaching aid away without feedback'],
+          ['HoldAid', 'Re-present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['ReleaseAid', 'Put the teaching aid away without feedback'],
+          ['Distractor', 'Give distractor instruction'],
+          ['HoldAid', 'Re-present the teaching aid'],
+          ['WhatIsThis', 'Teacher asks: What is this?'],
+          ['PositiveReinforcement', 'Praise the student']
+        ]
+      }
+    };
+    const trialProgress = new Map();
+    let latestStatus = null;
+    let activeTrialKey = null;
+
     function setText(id, value) { document.getElementById(id).textContent = value || '-'; }
+    function trialKey(status) {
+      return `${status.active_student_id || status.active_student || 'none'}::${status.scenario || 'none'}`;
+    }
+    function newProgress() {
+      return { completed: new Set(), missed: new Set(), current: 0, complete: false };
+    }
+    function hasProgressMarks(progress) {
+      return progress.completed.size > 0 || progress.missed.size > 0 || progress.complete || progress.current > 1;
+    }
+    function resetProgress(status) {
+      const key = trialKey(status);
+      const progress = newProgress();
+      trialProgress.set(key, progress);
+      return progress;
+    }
+    function getProgress(status) {
+      const key = trialKey(status);
+      if (!trialProgress.has(key)) trialProgress.set(key, newProgress());
+      return trialProgress.get(key);
+    }
+    function scenarioName(key) {
+      return SCENARIOS[key] ? SCENARIOS[key].title : (key || '-');
+    }
+    function renderScenarios() {
+      const grid = document.getElementById('scenarioGrid');
+      grid.innerHTML = '';
+      Object.entries(SCENARIOS).forEach(([key, scenario]) => {
+        const active = latestStatus && latestStatus.scenario === key;
+        const progress = active ? getProgress(latestStatus) : newProgress();
+        const card = document.createElement('article');
+        card.className = 'scenario-card' + (active ? ' active' : '');
+
+        const head = document.createElement('div');
+        head.className = 'scenario-title';
+        head.innerHTML = `<div><div class="scenario-name">${scenario.title}</div><div class="scenario-desc">${scenario.description}</div></div><div class="scenario-score">${progress.completed.size} OK<br>${progress.missed.size} missed</div>`;
+        card.appendChild(head);
+
+        const list = document.createElement('ol');
+        list.className = 'steps';
+        scenario.steps.forEach(([eventName, label], i) => {
+          const number = i + 1;
+          const missed = progress.missed.has(number);
+          const completed = progress.completed.has(number);
+          const current = active && !progress.complete && progress.current === number;
+          let state = 'pending';
+          if (missed) state = 'missed';
+          else if (current) state = 'current';
+          else if (completed || (active && progress.complete && number <= scenario.steps.length)) state = 'done';
+          else if (active && progress.current > number) state = 'done';
+
+          const item = document.createElement('li');
+          item.className = `step-row ${state}`;
+          item.innerHTML = `<div class="step-num">${number}</div><div><div class="step-name">${label}</div><div class="step-event">${eventName}</div></div>`;
+          list.appendChild(item);
+        });
+        card.appendChild(list);
+        grid.appendChild(card);
+      });
+    }
+    function parseWorkflowLog(message) {
+      if (!latestStatus || !message) return;
+      const progress = getProgress(latestStatus);
+      let match = message.match(/Step\s+(\d+)\s+OK:/);
+      if (match) {
+        const stepNumber = Number(match[1]);
+        progress.completed.add(stepNumber);
+        progress.missed.delete(stepNumber);
+        renderScenarios();
+        return;
+      }
+      match = message.match(/Step\s+(\d+)\s+MISSED\b/);
+      if (match) {
+        const stepNumber = Number(match[1]);
+        progress.missed.add(stepNumber);
+        progress.completed.delete(stepNumber);
+        renderScenarios();
+      }
+    }
     function logLine(text, cls='') {
       const div = document.createElement('div');
       div.className = 'log ' + cls;
@@ -147,8 +327,20 @@ INDEX_HTML = r"""<!doctype html>
       while (logs.children.length > 600) logs.removeChild(logs.firstChild);
     }
     function updateStatus(s) {
+      latestStatus = s;
+      const key = trialKey(s);
+      const currentStep = Number(s.current_step_index || 0);
+      let progress = getProgress(s);
+      const switchedTrial = activeTrialKey !== null && activeTrialKey !== key;
+      const restartedTrial = currentStep <= 1 && hasProgressMarks(progress);
+      if (!s.scenario_complete && currentStep <= 1 && (switchedTrial || restartedTrial)) {
+        progress = resetProgress(s);
+      }
+      activeTrialKey = key;
+      progress.current = currentStep;
+      progress.complete = !!s.scenario_complete;
       setText('active_student', s.active_student);
-      setText('scenario', s.scenario);
+      setText('scenario', scenarioName(s.scenario));
       setText('step', `${s.current_step_index || 0}/${s.step_count || 0} ${s.current_step_label || ''}`);
       setText('expected', s.expected_event);
       setText('waiting', s.is_waiting ? 'yes' : 'no');
@@ -156,6 +348,7 @@ INDEX_HTML = r"""<!doctype html>
       setText('held_aid', s.held_aid);
       setText('device', `${s.device_name || '-'} ${s.platform || ''}`);
       setText('status', s.status);
+      renderScenarios();
     }
     async function post(path, body={}) {
       const res = await fetch(path, {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body)});
@@ -181,7 +374,11 @@ INDEX_HTML = r"""<!doctype html>
     source.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === 'status') updateStatus(msg);
-      else if (msg.type === 'workflow_log') logLine(`[Unity] ${msg.message}`, msg.level === 'warn' ? 'warn' : '');
+      else if (msg.type === 'workflow_log') {
+        parseWorkflowLog(msg.message);
+        const cls = msg.message && msg.message.includes('MISSED') ? 'warn' : (msg.message && msg.message.includes('OK:') ? 'ok' : '');
+        logLine(`[Unity] ${msg.message}`, cls);
+      }
       else if (msg.type === 'ignored_event') logLine(`[Ignored ${msg.intent || ''}] ${msg.message}`, 'warn');
       else if (msg.type === 'voice_intent') logLine(`[Voice] ${msg.intent || ''} text="${msg.text || ''}" student=${msg.student_id || ''}`);
       else if (msg.type === 'asr_intent') logLine(`[ASR Intent] ${msg.intent || ''} triggered=${msg.triggered} text="${msg.text || ''}" reason=${msg.reason || ''}`);
@@ -191,7 +388,12 @@ INDEX_HTML = r"""<!doctype html>
     };
     fetch('/api/state').then(r => r.json()).then(data => {
       if (data.latest_status) updateStatus(data.latest_status);
-      (data.logs || []).forEach(msg => logLine(JSON.stringify(msg)));
+      const shouldReplayWorkflowLogs = latestStatus && Number(latestStatus.current_step_index || 0) > 1;
+      (data.logs || []).forEach(msg => {
+        if (shouldReplayWorkflowLogs && msg.type === 'workflow_log') parseWorkflowLog(msg.message);
+        logLine(JSON.stringify(msg), msg.level || '');
+      });
+      renderScenarios();
     });
   </script>
 </body>

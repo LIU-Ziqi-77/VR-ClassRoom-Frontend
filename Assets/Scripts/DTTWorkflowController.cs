@@ -276,7 +276,7 @@ public class DTTWorkflowController : MonoBehaviour
 
         if (scenarioType == DTTScenarioType.DirectCorrect)
         {
-            AddTeacherStep("4. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds);
+            AddTeacherStep("4. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds, false);
             return;
         }
 
@@ -296,7 +296,7 @@ public class DTTWorkflowController : MonoBehaviour
             AddResponseStep("14. Give distractor instruction", DTTWorkflowEvent.Distractor, DTTStudentScriptedResponse.DistractorAction, true);
             AddStep("15. Re-present the teaching aid", DTTWorkflowEvent.HoldAid);
             AddResponseStep("16. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct, true);
-            AddTeacherStep("17. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds);
+            AddTeacherStep("17. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds, false);
             return;
         }
 
@@ -312,7 +312,7 @@ public class DTTWorkflowController : MonoBehaviour
         AddResponseStep("18. Give distractor instruction", DTTWorkflowEvent.Distractor, DTTStudentScriptedResponse.DistractorAction, true);
         AddStep("19. Re-present the teaching aid", DTTWorkflowEvent.HoldAid);
         AddResponseStep("20. Teacher says: 这是什么", DTTWorkflowEvent.WhatIsThis, DTTStudentScriptedResponse.Correct, true);
-        AddTeacherStep("21. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds);
+        AddTeacherStep("21. Praise the student", DTTWorkflowEvent.PositiveReinforcement, missedFinalPraiseTimeoutSeconds, false);
     }
 
     private DTTStudentScriptedResponse GetInitialResponse(DTTScenarioType scenarioType)
@@ -327,9 +327,9 @@ public class DTTWorkflowController : MonoBehaviour
         currentSteps.Add(new DTTWorkflowStep(label, expectedEvent, DTTStudentScriptedResponse.None, false, 0f, true));
     }
 
-    private void AddTeacherStep(string label, DTTWorkflowEvent expectedEvent, float autoSkipSeconds = -1f)
+    private void AddTeacherStep(string label, DTTWorkflowEvent expectedEvent, float autoSkipSeconds = -1f, bool canAutoSkip = true)
     {
-        currentSteps.Add(new DTTWorkflowStep(label, expectedEvent, DTTStudentScriptedResponse.None, true, ResolveAutoSkipSeconds(autoSkipSeconds, false), true));
+        currentSteps.Add(new DTTWorkflowStep(label, expectedEvent, DTTStudentScriptedResponse.None, canAutoSkip, ResolveAutoSkipSeconds(autoSkipSeconds, false), true));
     }
 
     private void AddResponseStep(string label, DTTWorkflowEvent expectedEvent, DTTStudentScriptedResponse response, bool canAutoSkip = false, float autoSkipSeconds = -1f)
