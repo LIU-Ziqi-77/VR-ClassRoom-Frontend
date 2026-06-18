@@ -11,7 +11,10 @@ public class QuestControllerRayVisual : MonoBehaviour
     public XRNode controllerNode = XRNode.RightHand;
     public float rayDistance = 12f;
     public LayerMask raycastMask = ~0;
-    public QueryTriggerInteraction triggerInteraction = QueryTriggerInteraction.Collide;
+    public QueryTriggerInteraction triggerInteraction = QueryTriggerInteraction.Ignore;
+    public float minimumHitDistance = 0.08f;
+    public bool ignoreTriggerColliders = true;
+    public bool ignoreOwnHierarchy = true;
 
     [Header("Visuals")]
     public bool showRay = true;
@@ -27,6 +30,7 @@ public class QuestControllerRayVisual : MonoBehaviour
     public Vector3 cameraLocalEuler = new Vector3(8f, 0f, 0f);
 
     private readonly List<InputDevice> devices = new List<InputDevice>();
+    private static readonly RaycastHit[] raycastHits = new RaycastHit[64];
     private LineRenderer lineRenderer;
     private Transform reticle;
     private Material lineMaterial;
@@ -81,13 +85,7 @@ public class QuestControllerRayVisual : MonoBehaviour
     {
         EnsureVisuals();
 
-        bool hitSomething = Physics.Raycast(
-            transform.position,
-            transform.forward,
-            out RaycastHit hit,
-            rayDistance,
-            raycastMask,
-            triggerInteraction);
+        bool hitSomething = TryGetFirstVisibleRayHit(out RaycastHit hit);
 
         Vector3 endPoint = hitSomething ? hit.point : transform.position + transform.forward * rayDistance;
         Color color = hitSomething ? hitColor : idleColor;
@@ -114,6 +112,53 @@ public class QuestControllerRayVisual : MonoBehaviour
                 reticle.localScale = Vector3.one * reticleSize;
             }
         }
+    }
+
+    private bool TryGetFirstVisibleRayHit(out RaycastHit selectedHit)
+    {
+        selectedHit = default;
+
+        int hitCount = Physics.RaycastNonAlloc(
+            transform.position,
+            transform.forward,
+            raycastHits,
+            rayDistance,
+            raycastMask,
+            triggerInteraction);
+
+        if (hitCount == 0) return false;
+
+        System.Array.Sort(raycastHits, 0, hitCount, RaycastHitDistanceComparer.Instance);
+        for (int i = 0; i < hitCount; i++)
+        {
+            RaycastHit hit = raycastHits[i];
+            if (ShouldIgnoreHit(hit)) continue;
+
+            selectedHit = hit;
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool ShouldIgnoreHit(RaycastHit hit)
+    {
+        if (hit.collider == null) return true;
+        if (hit.distance < minimumHitDistance) return true;
+        if (ignoreTriggerColliders && hit.collider.isTrigger) return true;
+
+        Transform hitTransform = hit.collider.transform;
+        if (ignoreOwnHierarchy && (hitTransform == transform || hitTransform.IsChildOf(transform)))
+        {
+            return true;
+        }
+
+        if (hit.collider.GetComponentInParent<RightControllerHintPanel>() != null)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private void EnsureVisuals()
@@ -191,5 +236,15 @@ public class QuestControllerRayVisual : MonoBehaviour
         if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
         if (material.HasProperty("_Color")) material.SetColor("_Color", color);
         material.color = color;
+    }
+
+    private sealed class RaycastHitDistanceComparer : IComparer<RaycastHit>
+    {
+        public static readonly RaycastHitDistanceComparer Instance = new RaycastHitDistanceComparer();
+
+        public int Compare(RaycastHit a, RaycastHit b)
+        {
+            return a.distance.CompareTo(b.distance);
+        }
     }
 }

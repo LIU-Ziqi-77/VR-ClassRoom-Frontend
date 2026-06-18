@@ -9400,7 +9400,10 @@ MonoBehaviour:
   raycastMask:
     serializedVersion: 2
     m_Bits: 4294967295
-  triggerInteraction: 2
+  triggerInteraction: 1
+  minimumHitDistance: 0.08
+  ignoreTriggerColliders: 1
+  ignoreOwnHierarchy: 1
   showRay: 1
   showOnlyWhenControllerPose: 1
   lineWidth: 0.012
@@ -31962,7 +31965,10 @@ MonoBehaviour:
   raycastMask:
     serializedVersion: 2
     m_Bits: 4294967295
-  triggerInteraction: 2
+  triggerInteraction: 1
+  minimumHitDistance: 0.08
+  ignoreTriggerColliders: 1
+  ignoreOwnHierarchy: 1
   showRay: 0
   showOnlyWhenControllerPose: 1
   lineWidth: 0.012

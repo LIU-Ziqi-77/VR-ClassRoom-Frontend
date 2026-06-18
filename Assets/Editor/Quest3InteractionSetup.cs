@@ -335,6 +335,10 @@ public static class Quest3InteractionSetup
         visual.showOnlyWhenControllerPose = true;
         visual.rayDistance = 12f;
         visual.raycastMask = ~0;
+        visual.triggerInteraction = QueryTriggerInteraction.Ignore;
+        visual.minimumHitDistance = 0.08f;
+        visual.ignoreTriggerColliders = true;
+        visual.ignoreOwnHierarchy = true;
         visual.idleColor = new Color(0.25f, 1f, 0.35f, 0.95f);
         visual.hitColor = new Color(0.25f, 1f, 0.35f, 1f);
         visual.fallbackToCameraWhenNoController = true;
