@@ -6,6 +6,11 @@
 [Ll]ogs/
 UserSettings/
 
+*.apk
+*.zip
+__pycache__/
+*.pyc
+
 *.csproj
 *.unityproj
 *.sln
