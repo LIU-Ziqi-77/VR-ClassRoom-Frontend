@@ -27,6 +27,7 @@ public class DTTTeachingAid : MonoBehaviour
 
     [Header("Visual Feedback")]
     public bool useRuntimeHighlight = true;
+    public bool preserveOriginalMaterialColors = true;
     public Color selectedTint = new Color(0.2f, 1f, 0.35f, 1f);
     public Color heldTint = new Color(0.1f, 0.85f, 1f, 1f);
     public float selectedScaleMultiplier = 1.04f;
@@ -154,7 +155,7 @@ public class DTTTeachingAid : MonoBehaviour
 
         if (cachedRenderers == null || cachedRenderers.Length == 0) return;
 
-        if (!highlighted)
+        if (!highlighted || preserveOriginalMaterialColors)
         {
             foreach (Renderer renderer in cachedRenderers)
             {
