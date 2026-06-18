@@ -22234,10 +22234,13 @@ MonoBehaviour:
   returnToOriginalPoseOnRelease: 1
   useRuntimeHighlight: 1
   preserveOriginalMaterialColors: 1
+  showSelectionShadow: 0
+  selectionShadowColor: {r: 0.1, g: 0.9, b: 0.28, a: 0.34}
   selectedTint: {r: 0.2, g: 1, b: 0.35, a: 1}
   heldTint: {r: 0.1, g: 0.85, b: 1, a: 1}
   selectedScaleMultiplier: 1.04
   heldScaleMultiplier: 1.08
+  selectionShadowScalePadding: 1.25
 --- !u!114 &831200147
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -57107,10 +57110,13 @@ MonoBehaviour:
   returnToOriginalPoseOnRelease: 1
   useRuntimeHighlight: 1
   preserveOriginalMaterialColors: 1
+  showSelectionShadow: 0
+  selectionShadowColor: {r: 0.1, g: 0.9, b: 0.28, a: 0.34}
   selectedTint: {r: 0.2, g: 1, b: 0.35, a: 1}
   heldTint: {r: 0.1, g: 0.85, b: 1, a: 1}
   selectedScaleMultiplier: 1.04
   heldScaleMultiplier: 1.08
+  selectionShadowScalePadding: 1.25
 --- !u!114 &501191646608048302
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -57427,10 +57433,13 @@ MonoBehaviour:
   returnToOriginalPoseOnRelease: 1
   useRuntimeHighlight: 1
   preserveOriginalMaterialColors: 1
+  showSelectionShadow: 0
+  selectionShadowColor: {r: 0.1, g: 0.9, b: 0.28, a: 0.34}
   selectedTint: {r: 0.2, g: 1, b: 0.35, a: 1}
   heldTint: {r: 0.1, g: 0.85, b: 1, a: 1}
   selectedScaleMultiplier: 1.04
   heldScaleMultiplier: 1.08
+  selectionShadowScalePadding: 1.25
 --- !u!1001 &1023642900871190393
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -60195,10 +60204,13 @@ MonoBehaviour:
   returnToOriginalPoseOnRelease: 1
   useRuntimeHighlight: 1
   preserveOriginalMaterialColors: 1
+  showSelectionShadow: 0
+  selectionShadowColor: {r: 0.1, g: 0.9, b: 0.28, a: 0.34}
   selectedTint: {r: 0.2, g: 1, b: 0.35, a: 1}
   heldTint: {r: 0.1, g: 0.85, b: 1, a: 1}
   selectedScaleMultiplier: 1.04
   heldScaleMultiplier: 1.08
+  selectionShadowScalePadding: 1.25
 --- !u!114 &8178213805048762088
 MonoBehaviour:
   m_ObjectHideFlags: 0
