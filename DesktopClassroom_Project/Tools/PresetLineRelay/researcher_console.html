@@ -60,13 +60,18 @@
       font-size: 12px;
       margin: 12px 0 6px;
     }
-    input, select {
+    input, select, textarea {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 9px 10px;
       background: #fff;
       font-size: 14px;
+    }
+    textarea {
+      min-height: 94px;
+      resize: vertical;
+      font-family: inherit;
     }
     button {
       border: 1px solid var(--line);
@@ -79,6 +84,12 @@
       text-align: left;
     }
     button:hover { border-color: var(--accent); }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.46;
+      background: #f1f3f5;
+    }
+    button:disabled:hover { border-color: var(--line); }
     button.primary {
       background: var(--accent);
       color: white;
@@ -113,6 +124,7 @@
     .dot.ok { background: var(--ok); }
     .student-grid,
     .quick-grid,
+    .custom-grid,
     .behavior-grid,
     .line-grid {
       display: grid;
@@ -120,6 +132,7 @@
     }
     .student-grid { grid-template-columns: 1fr; }
     .quick-grid { grid-template-columns: 1fr; }
+    .custom-grid { grid-template-columns: 1fr; max-width: 760px; }
     .behavior-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .line-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
     .student {
@@ -187,7 +200,7 @@
 
       <label>快捷控制</label>
       <div class="quick-grid">
-        <button class="warn" id="return-keke">可可回座位</button>
+        <button class="warn" id="return-lily">莉莉回座位</button>
       </div>
 
       <label>事件日志</label>
@@ -204,26 +217,42 @@
         <h2>预制台词</h2>
         <div id="lines"></div>
       </div>
+
+      <div class="group">
+        <h2>自定义台词</h2>
+        <div class="custom-grid">
+          <textarea id="custom-text" placeholder="输入想让当前选中学生说的话"></textarea>
+          <button class="primary" id="send-custom">发送给当前学生</button>
+        </div>
+      </div>
     </section>
   </main>
 
   <script>
     const students = [
-      { index: 1, name: "可可", profile: "student_01_xiaoxiao_girl" },
-      { index: 2, name: "李奥", profile: "student_03_yunjian_boy" },
-      { index: 3, name: "安娜", profile: "student_02_xiaoyi_girl" },
+      { index: 1, name: "莉莉", englishName: "Lily", profile: "student_01_xiaoxiao_girl" },
+      { index: 2, name: "卢卡", englishName: "Luca", profile: "student_03_yunjian_boy" },
+      { index: 3, name: "贝拉", englishName: "Bella", profile: "student_02_xiaoyi_girl" },
     ];
 
     const utteranceGroups = {
       "物品回答": [
-        ["ruler_short", "尺子！"],
-        ["ruler_sentence", "这是尺子。"],
-        ["eraser_short", "橡皮！"],
-        ["eraser_sentence", "这是橡皮。"],
-        ["pencil_short", "铅笔！"],
-        ["pencil_sentence", "这是铅笔。"],
-        ["notebook_short", "本子！"],
-        ["notebook_sentence", "这是本子。"],
+        ["crab_short", "螃蟹！"],
+        ["crab_sentence", "这是螃蟹。"],
+        ["jellyfish_short", "水母！"],
+        ["jellyfish_sentence", "这是水母。"],
+        ["bee_short", "蜜蜂！"],
+        ["bee_sentence", "这是蜜蜂。"],
+        ["ant_short", "蚂蚁！"],
+        ["ant_sentence", "这是蚂蚁。"],
+        ["apple_short", "苹果！"],
+        ["apple_sentence", "这是苹果。"],
+        ["banana_short", "香蕉！"],
+        ["banana_sentence", "这是香蕉。"],
+        ["strawberry_short", "草莓！"],
+        ["strawberry_sentence", "这是草莓。"],
+        ["grape_short", "葡萄！"],
+        ["grape_sentence", "这是葡萄。"],
       ],
       "不确定/错误": [
         ["uncertain_ruler", "嗯……是尺子吗？"],
@@ -246,9 +275,13 @@
       ],
     };
 
+    const disabledUtteranceGroups = new Set(["不确定/错误", "课堂行为"]);
+
     const behaviors = [
       ["raise_hand", "举手", 5, ""],
       ["ask_question", "提问姿态", 5, ""],
+      ["clap", "拍手", 3, ""],
+      ["touch_nose", "摸鼻子", 3, ""],
       ["distracted", "分心", 6, "warn"],
       ["talk", "和同伴说话", 5, "warn"],
       ["hit_desk", "拍桌", 3, "danger"],
@@ -257,6 +290,7 @@
       ["recover", "恢复", 2, ""],
       ["stop", "停止当前行为", 1, "danger"],
     ];
+    const enabledBehaviorKeys = new Set(["clap", "touch_nose"]);
 
     let socket = null;
     let selectedStudent = students[0];
@@ -266,6 +300,7 @@
     const statusEl = document.getElementById("status");
     const dotEl = document.getElementById("dot");
     const logEl = document.getElementById("log");
+    const customTextEl = document.getElementById("custom-text");
 
     roomInput.value = localStorage.getItem("relay.room") || "demo";
     tokenInput.value = localStorage.getItem("relay.token") || "";
@@ -356,7 +391,7 @@
       log(`sent behavior ${selectedStudent.name}: ${behavior}`);
     }
 
-    function sendKekeReturnSeat() {
+    function sendLilyReturnSeat() {
       send({
         type: "behavior",
         studentIndex: 1,
@@ -364,7 +399,25 @@
         duration: 2,
         timestamp: Date.now() / 1000,
       });
-      log("sent behavior 可可: return_seat");
+      log("sent behavior 莉莉: return_seat");
+    }
+
+    function sendCustomText() {
+      const text = customTextEl.value.trim();
+      if (!text) {
+        log("custom text is empty");
+        return;
+      }
+
+      send({
+        type: "custom_text",
+        studentIndex: selectedStudent.index,
+        voiceProfileId: selectedStudent.profile,
+        text,
+        timestamp: Date.now() / 1000,
+      });
+      log(`sent custom text ${selectedStudent.name}: ${text}`);
+      customTextEl.value = "";
     }
 
     function sendStudentSelection() {
@@ -403,6 +456,7 @@
         const button = document.createElement("button");
         button.className = cls;
         button.textContent = label;
+        button.disabled = !enabledBehaviorKeys.has(key);
         button.addEventListener("click", () => sendBehavior(key, duration));
         container.appendChild(button);
       }
@@ -424,6 +478,7 @@
           const button = document.createElement("button");
           button.textContent = text;
           button.title = key;
+          button.disabled = disabledUtteranceGroups.has(groupName);
           button.addEventListener("click", () => sendPreset(key, text));
           grid.appendChild(button);
         }
@@ -436,7 +491,14 @@
 
     document.getElementById("connect").addEventListener("click", connect);
     document.getElementById("disconnect").addEventListener("click", disconnect);
-    document.getElementById("return-keke").addEventListener("click", sendKekeReturnSeat);
+    document.getElementById("return-lily").addEventListener("click", sendLilyReturnSeat);
+    document.getElementById("send-custom").addEventListener("click", sendCustomText);
+    customTextEl.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        sendCustomText();
+      }
+    });
 
     renderStudents();
     renderBehaviors();

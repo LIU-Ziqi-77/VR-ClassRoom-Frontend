@@ -29,7 +29,8 @@ public class DTTTeacherInteractionController : MonoBehaviour
     public bool triggerSelects = true;
     [FormerlySerializedAs("gripHoldsAid")]
     public bool gripTogglesAidHold = true;
-    public bool triggerCanReturnKekeLeaveSeat = true;
+    [FormerlySerializedAs("triggerCanReturnKekeLeaveSeat")]
+    public bool triggerCanReturnLilyLeaveSeat = true;
 
     [Header("Keyboard Fallback")]
     public bool keyboardFallback = true;
@@ -135,11 +136,11 @@ public class DTTTeacherInteractionController : MonoBehaviour
 
         if (student != null)
         {
-            if (triggerCanReturnKekeLeaveSeat &&
+            if (triggerCanReturnLilyLeaveSeat &&
                 workflowController != null &&
-                workflowController.TryHandleKekeReturnPointer(student))
+                workflowController.TryHandleLilyReturnPointer(student))
             {
-                Debug.Log($"[DTT] Select ray requested Keke return-to-seat: {student.gameObject.name}");
+                Debug.Log($"[DTT] Select ray requested Lily return-to-seat: {student.gameObject.name}");
                 return;
             }
 
@@ -334,7 +335,7 @@ public class DTTTeacherInteractionController : MonoBehaviour
         string heldAid = manager != null && manager.heldAid != null
             ? manager.heldAid.displayName
             : "none";
-        string hint = $"{currentAimLabel}\nJ select aid/Keke return | K toggle pick up/return aid | student selection by voice\nSelected student: {selectedStudent} | Selected aid: {selectedAid} | Held aid: {heldAid}";
+        string hint = $"{currentAimLabel}\nJ select aid/Lily return | K toggle pick up/return aid | student selection by voice\nSelected student: {selectedStudent} | Selected aid: {selectedAid} | Held aid: {heldAid}";
 
         GUI.Box(new Rect(16f, Screen.height - 92f, 620f, 76f), hint, hintStyle);
     }

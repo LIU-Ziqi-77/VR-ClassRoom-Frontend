@@ -50,6 +50,8 @@ public class TTSService : MonoBehaviour
     
     void Awake()
     {
+        LoadConfigFromEnvironment();
+
         if (instance == null)
         {
             instance = this;
@@ -63,7 +65,7 @@ public class TTSService : MonoBehaviour
     
     public async Task<AudioClip> GenerateSpeech(string text, string voice = "zh-CN-XiaoxiaoNeural")
     {
-        if (string.IsNullOrEmpty(apiKey))
+        if (!HasValidApiKey())
         {
             Debug.LogError("TTS API Key not set!");
             return null;
@@ -80,7 +82,7 @@ public class TTSService : MonoBehaviour
     
     public async Task<AudioClip> GenerateSpeechWithSSML(string ssml)
     {
-        if (string.IsNullOrEmpty(apiKey))
+        if (!HasValidApiKey())
         {
             Debug.LogError("TTS API Key not set!");
             return null;
@@ -162,13 +164,52 @@ public class TTSService : MonoBehaviour
     
     private string BuildSSML(TTSRequest request)
     {
+        string escapedText = EscapeXml(request.text);
         return $@"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='zh-CN'>
             <voice name='{request.voice}'>
                 <prosody rate='{request.rate}' pitch='{request.pitch}'>
-                    {request.text}
+                    {escapedText}
                 </prosody>
             </voice>
         </speak>";
+    }
+
+    private void LoadConfigFromEnvironment()
+    {
+        string envKey = Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
+        if (!string.IsNullOrWhiteSpace(envKey))
+        {
+            apiKey = envKey;
+        }
+
+        string envEndpoint = Environment.GetEnvironmentVariable("AZURE_SPEECH_ENDPOINT");
+        if (string.IsNullOrWhiteSpace(envEndpoint))
+        {
+            envEndpoint = Environment.GetEnvironmentVariable("AZURE_TTS_ENDPOINT");
+        }
+
+        if (!string.IsNullOrWhiteSpace(envEndpoint))
+        {
+            endpoint = envEndpoint;
+        }
+    }
+
+    private bool HasValidApiKey()
+    {
+        return !string.IsNullOrWhiteSpace(apiKey)
+            && apiKey != "YOUR_AZURE_API_KEY_HERE";
+    }
+
+    private static string EscapeXml(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+
+        return value
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;")
+            .Replace("\"", "&quot;")
+            .Replace("'", "&apos;");
     }
     
     private AudioClip ConvertAudioDataToClip(byte[] audioData)

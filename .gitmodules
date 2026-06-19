@@ -1,0 +1,6 @@
+[submodule "DesktopClassroom_Project/PresetLineRelay_DeployRepo"]
+	path = DesktopClassroom_Project/PresetLineRelay_DeployRepo
+	url = https://github.com/LIU-Ziqi-77/vr-classroom-relay.git
+[submodule "DesktopClassroom_Project/Voice Recognition/sherpa_streaming_test"]
+	path = DesktopClassroom_Project/Voice Recognition/sherpa_streaming_test
+	url = https://github.com/LIU-Ziqi-77/sherpa-streaming-test.git

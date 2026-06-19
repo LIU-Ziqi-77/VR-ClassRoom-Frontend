@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public enum DTTScenarioType
 {
@@ -90,14 +91,21 @@ public class DTTWorkflowController : MonoBehaviour
     [Header("Desktop Monitor")]
     public bool autoCreateMonitorReporter = true;
 
-    [Header("Keke Leave-Seat Disruption")]
-    public bool enableKekeLeaveSeatDuringAnnaDTT = true;
-    public string kekeLeaveSeatStudentName = "可可";
-    public string kekeLeaveSeatAllowedActiveStudentName = "安娜";
-    public float kekeLeaveSeatInitialDelaySeconds = 20f;
-    public float kekeLeaveSeatIntervalSeconds = 45f;
-    public float kekeReturnDelaySeconds = 1f;
-    public string[] kekeReturnPhrases = { "起来", "回来", "回座位", "怎么躺下", "躺下啦", "躺下了" };
+    [Header("Lily Leave-Seat Disruption")]
+    [FormerlySerializedAs("enableKekeLeaveSeatDuringAnnaDTT")]
+    public bool enableLilyLeaveSeatDuringBellaDTT = true;
+    [FormerlySerializedAs("kekeLeaveSeatStudentName")]
+    public string lilyLeaveSeatStudentName = "莉莉";
+    [FormerlySerializedAs("kekeLeaveSeatAllowedActiveStudentName")]
+    public string lilyLeaveSeatAllowedActiveStudentName = "贝拉";
+    [FormerlySerializedAs("kekeLeaveSeatInitialDelaySeconds")]
+    public float lilyLeaveSeatInitialDelaySeconds = 20f;
+    [FormerlySerializedAs("kekeLeaveSeatIntervalSeconds")]
+    public float lilyLeaveSeatIntervalSeconds = 45f;
+    [FormerlySerializedAs("kekeReturnDelaySeconds")]
+    public float lilyReturnDelaySeconds = 1f;
+    [FormerlySerializedAs("kekeReturnPhrases")]
+    public string[] lilyReturnPhrases = { "起来", "回来", "回座位", "怎么躺下", "躺下啦", "躺下了" };
 
     private readonly List<DTTWorkflowStep> currentSteps = new List<DTTWorkflowStep>();
     private readonly List<DTTTeacherIntent> pendingDistractorIntents = new List<DTTTeacherIntent>();
@@ -115,8 +123,8 @@ public class DTTWorkflowController : MonoBehaviour
     private GUIStyle statusStyle;
     private DTTMonitorReporter monitorReporter;
     private BehaviorDemoController behaviorDemoController;
-    private float nextKekeLeaveSeatCheckTime;
-    private Coroutine kekeReturnRoutine;
+    private float nextLilyLeaveSeatCheckTime;
+    private Coroutine lilyReturnRoutine;
 
     void Awake()
     {
@@ -126,8 +134,9 @@ public class DTTWorkflowController : MonoBehaviour
         }
 
         AutoBindMissingReferences();
+        ApplyCurrentStudentNames();
         EnsureMonitorReporter();
-        ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatInitialDelaySeconds);
+        ScheduleNextLilyLeaveSeatCheck(lilyLeaveSeatInitialDelaySeconds);
     }
 
     void Start()
@@ -143,7 +152,7 @@ public class DTTWorkflowController : MonoBehaviour
         PollManagerSelection();
         PollTeachingAidEvents();
         PollKeyboardTesting();
-        PollKekeLeaveSeatDisruption();
+        PollLilyLeaveSeatDisruption();
     }
 
     public void HandleVoiceIntent(DTTVoiceIntentMessage message)
@@ -156,7 +165,7 @@ public class DTTWorkflowController : MonoBehaviour
             monitorReporter.SendVoiceIntent(message, intent);
         }
 
-        if (TryHandleKekeReturnVoice(message))
+        if (TryHandleLilyReturnVoice(message))
         {
             return;
         }
@@ -254,9 +263,9 @@ public class DTTWorkflowController : MonoBehaviour
             StopActiveRoutine();
             LogEvent($"Selected {GetStudentLabel(binding)} / {binding.scenarioType}");
             UpdateStatus();
-            if (IsActiveStudentNamed(kekeLeaveSeatAllowedActiveStudentName))
+            if (IsActiveStudentNamed(lilyLeaveSeatAllowedActiveStudentName))
             {
-                ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatInitialDelaySeconds);
+                ScheduleNextLilyLeaveSeatCheck(lilyLeaveSeatInitialDelaySeconds);
             }
             TryAutoAdvanceCurrentStep();
         }
@@ -737,70 +746,70 @@ public class DTTWorkflowController : MonoBehaviour
         }
     }
 
-    private void PollKekeLeaveSeatDisruption()
+    private void PollLilyLeaveSeatDisruption()
     {
-        if (!enableKekeLeaveSeatDuringAnnaDTT) return;
-        if (!IsActiveStudentNamed(kekeLeaveSeatAllowedActiveStudentName)) return;
+        if (!enableLilyLeaveSeatDuringBellaDTT) return;
+        if (!IsActiveStudentNamed(lilyLeaveSeatAllowedActiveStudentName)) return;
         if (IsScenarioComplete()) return;
-        if (IsKekeLeaveSeatActive()) return;
-        if (Time.time < nextKekeLeaveSeatCheckTime) return;
+        if (IsLilyLeaveSeatActive()) return;
+        if (Time.time < nextLilyLeaveSeatCheckTime) return;
 
-        ScheduleNextKekeLeaveSeatCheck();
+        ScheduleNextLilyLeaveSeatCheck();
 
         BehaviorDemoController demo = GetBehaviorDemoController();
         if (demo == null)
         {
-            IgnoreEvent("KekeLeaveSeat", "BehaviorDemoController not found");
+            IgnoreEvent("LilyLeaveSeat", "BehaviorDemoController not found");
             return;
         }
 
-        if (demo.TriggerLeaveSeatForStudent(kekeLeaveSeatStudentName))
+        if (demo.TriggerLeaveSeatForStudent(lilyLeaveSeatStudentName))
         {
-            LogEvent($"{kekeLeaveSeatStudentName} timed leave-seat disruption while teaching {GetStudentLabel(activeStudent)}");
+            LogEvent($"{lilyLeaveSeatStudentName} timed leave-seat disruption while teaching {GetStudentLabel(activeStudent)}");
         }
     }
 
-    private bool TryHandleKekeReturnVoice(DTTVoiceIntentMessage message)
+    private bool TryHandleLilyReturnVoice(DTTVoiceIntentMessage message)
     {
-        if (!enableKekeLeaveSeatDuringAnnaDTT) return false;
-        if (!IsKekeLeaveSeatActive()) return false;
-        if (!MessageMentionsStudent(message, kekeLeaveSeatStudentName)) return false;
+        if (!enableLilyLeaveSeatDuringBellaDTT) return false;
+        if (!IsLilyLeaveSeatActive()) return false;
+        if (!MessageMentionsStudent(message, lilyLeaveSeatStudentName)) return false;
 
-        return TryStartKekeReturnIntervention("voice");
+        return TryStartLilyReturnIntervention("voice");
     }
 
-    public bool TryHandleKekeReturnPointer(DTTTargetStudentMarker marker)
+    public bool TryHandleLilyReturnPointer(DTTTargetStudentMarker marker)
     {
-        if (!enableKekeLeaveSeatDuringAnnaDTT) return false;
+        if (!enableLilyLeaveSeatDuringBellaDTT) return false;
         if (marker == null) return false;
-        if (!IsKekeLeaveSeatActive()) return false;
-        if (!MarkerMatchesStudentName(marker, kekeLeaveSeatStudentName)) return false;
+        if (!IsLilyLeaveSeatActive()) return false;
+        if (!MarkerMatchesStudentName(marker, lilyLeaveSeatStudentName)) return false;
 
-        return TryStartKekeReturnIntervention("pointer");
+        return TryStartLilyReturnIntervention("pointer");
     }
 
-    private bool TryStartKekeReturnIntervention(string source)
+    private bool TryStartLilyReturnIntervention(string source)
     {
         BehaviorDemoController demo = GetBehaviorDemoController();
         if (demo == null)
         {
-            IgnoreEvent("KekeReturn", "BehaviorDemoController not found");
+            IgnoreEvent("LilyReturn", "BehaviorDemoController not found");
             return true;
         }
 
-        if (kekeReturnRoutine == null)
+        if (lilyReturnRoutine == null)
         {
-            kekeReturnRoutine = StartCoroutine(DelayedKekeReturnRoutine(demo));
+            lilyReturnRoutine = StartCoroutine(DelayedLilyReturnRoutine(demo));
         }
-        ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatInitialDelaySeconds);
-        LogEvent($"{kekeLeaveSeatStudentName} return-to-seat {source} intervention intercepted; active DTT student remains {GetStudentLabel(activeStudent)}");
+        ScheduleNextLilyLeaveSeatCheck(lilyLeaveSeatInitialDelaySeconds);
+        LogEvent($"{lilyLeaveSeatStudentName} return-to-seat {source} intervention intercepted; active DTT student remains {GetStudentLabel(activeStudent)}");
         UpdateStatus();
         return true;
     }
 
-    private IEnumerator DelayedKekeReturnRoutine(BehaviorDemoController demo)
+    private IEnumerator DelayedLilyReturnRoutine(BehaviorDemoController demo)
     {
-        float delay = Mathf.Max(0f, kekeReturnDelaySeconds);
+        float delay = Mathf.Max(0f, lilyReturnDelaySeconds);
         if (delay > 0f)
         {
             yield return new WaitForSeconds(delay);
@@ -808,16 +817,16 @@ public class DTTWorkflowController : MonoBehaviour
 
         if (demo != null)
         {
-            demo.ReturnLeaveSeatStudent(kekeLeaveSeatStudentName);
+            demo.ReturnLeaveSeatStudent(lilyLeaveSeatStudentName);
         }
 
-        kekeReturnRoutine = null;
+        lilyReturnRoutine = null;
     }
 
-    private bool IsKekeLeaveSeatActive()
+    private bool IsLilyLeaveSeatActive()
     {
         BehaviorDemoController demo = GetBehaviorDemoController();
-        return demo != null && demo.IsLeaveSeatBehaviorActive(kekeLeaveSeatStudentName);
+        return demo != null && demo.IsLeaveSeatBehaviorActive(lilyLeaveSeatStudentName);
     }
 
     private bool MarkerMatchesStudentName(DTTTargetStudentMarker marker, string displayName)
@@ -876,12 +885,12 @@ public class DTTWorkflowController : MonoBehaviour
         return activeStudent != null && currentSteps.Count > 0 && currentStepIndex >= currentSteps.Count;
     }
 
-    private void ScheduleNextKekeLeaveSeatCheck(float delaySeconds = -1f)
+    private void ScheduleNextLilyLeaveSeatCheck(float delaySeconds = -1f)
     {
         float delay = delaySeconds >= 0f
             ? delaySeconds
-            : Mathf.Max(0.1f, kekeLeaveSeatIntervalSeconds);
-        nextKekeLeaveSeatCheckTime = Time.time + delay;
+            : Mathf.Max(0.1f, lilyLeaveSeatIntervalSeconds);
+        nextLilyLeaveSeatCheckTime = Time.time + delay;
     }
 
     private BehaviorDemoController GetBehaviorDemoController()
@@ -1102,6 +1111,82 @@ public class DTTWorkflowController : MonoBehaviour
                     : binding.studentController.studentName;
             }
         }
+    }
+
+    private void ApplyCurrentStudentNames()
+    {
+        lilyLeaveSeatStudentName = "莉莉";
+        lilyLeaveSeatAllowedActiveStudentName = "贝拉";
+
+        for (int i = 0; i < students.Count; i++)
+        {
+            DTTStudentScenarioBinding binding = students[i];
+            if (binding == null) continue;
+
+            if (IsKnownStudentBinding(binding, i, "Ele_student1", "student_01_xiaoxiao_girl", "可可"))
+            {
+                ConfigureKnownStudentBinding(binding, "莉莉", "Lily", "lili");
+            }
+            else if (IsKnownStudentBinding(binding, i, "Ele_student2", "student_03_yunjian_boy", "李奥", "里奥"))
+            {
+                ConfigureKnownStudentBinding(binding, "卢卡", "Luca", "luka");
+            }
+            else if (IsKnownStudentBinding(binding, i, "Ele_student3", "student_02_xiaoyi_girl", "安娜"))
+            {
+                ConfigureKnownStudentBinding(binding, "贝拉", "Bella");
+            }
+        }
+    }
+
+    private bool IsKnownStudentBinding(
+        DTTStudentScenarioBinding binding,
+        int index,
+        string studentId,
+        string voiceProfileId,
+        params string[] legacyNames)
+    {
+        if (binding == null) return false;
+        if (index >= 0 && index <= 2 && Matches(binding.studentId, studentId)) return true;
+        if (Matches(binding.studentId, studentId)) return true;
+        if (Matches(binding.voiceProfileId, voiceProfileId)) return true;
+
+        for (int i = 0; i < legacyNames.Length; i++)
+        {
+            if (Matches(binding.displayName, legacyNames[i])) return true;
+        }
+
+        return false;
+    }
+
+    private void ConfigureKnownStudentBinding(
+        DTTStudentScenarioBinding binding,
+        string displayName,
+        params string[] aliases)
+    {
+        binding.displayName = displayName;
+        if (binding.voiceSelectionAliases == null)
+        {
+            binding.voiceSelectionAliases = new List<string>();
+        }
+
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            if (!ContainsAlias(binding.voiceSelectionAliases, aliases[i]))
+            {
+                binding.voiceSelectionAliases.Add(aliases[i]);
+            }
+        }
+    }
+
+    private bool ContainsAlias(List<string> aliases, string alias)
+    {
+        if (aliases == null || string.IsNullOrEmpty(alias)) return false;
+        for (int i = 0; i < aliases.Count; i++)
+        {
+            if (Matches(aliases[i], alias)) return true;
+        }
+
+        return false;
     }
 
     private void EnsureMonitorReporter()

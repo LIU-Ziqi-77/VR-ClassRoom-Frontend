@@ -22,6 +22,14 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
         "student_02_xiaoyi_girl"
     };
 
+    [Header("Azure TTS Voices")]
+    public string[] azureVoiceByStudentIndex =
+    {
+        "zh-CN-XiaoxiaoNeural",
+        "zh-CN-YunjianNeural",
+        "zh-CN-XiaoyiNeural"
+    };
+
     [Header("Debug")]
     public bool logMessages = true;
     public bool showStatusOverlay = false;
@@ -314,8 +322,17 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
                 SelectStudent(player);
                 PlayPresetLine(player, packet);
                 break;
+            case RemoteVoicePacketTypes.CustomText:
+                SelectStudent(player);
+                _ = PlayCustomText(player, packet);
+                break;
             case RemoteVoicePacketTypes.Behavior:
                 SelectStudent(player);
+                if (TryTriggerDemoBehavior(packet.behavior))
+                {
+                    status = $"behavior {packet.behavior} -> {player.studentDisplayName}";
+                    break;
+                }
                 player.TriggerBehavior(packet.behavior, packet.duration);
                 status = $"behavior {packet.behavior} -> {player.studentDisplayName}";
                 break;
@@ -347,6 +364,57 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
 
         player.PlayPresetClip(clip, $"{profile}/{utteranceKey} {packet.text}");
         status = $"preset {utteranceKey} -> {player.studentDisplayName}";
+    }
+
+    private bool TryTriggerDemoBehavior(string behavior)
+    {
+        string key = NormalizeBehavior(behavior);
+        BehaviorDemoController demo = FindObjectOfType<BehaviorDemoController>();
+        if (demo == null) return false;
+
+        switch (key)
+        {
+            case "clap":
+            case "clapping":
+                demo.TriggerClap();
+                return true;
+            case "touchnose":
+                demo.TriggerTouchNose();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private async Task PlayCustomText(RemoteStudentVoicePlayer player, RemoteVoicePacket packet)
+    {
+        string text = packet.text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            status = "custom text is empty";
+            return;
+        }
+
+        string voiceName = GetAzureVoiceName(packet.studentIndex);
+        status = $"generating TTS -> {player.studentDisplayName}";
+
+        try
+        {
+            AudioClip clip = await TTSService.Instance.GenerateSpeech(text.Trim(), voiceName);
+            if (clip == null)
+            {
+                status = $"TTS failed -> {player.studentDisplayName}";
+                return;
+            }
+
+            player.PlayPresetClip(clip, $"{voiceName}: {text}");
+            status = $"custom TTS -> {player.studentDisplayName}";
+        }
+        catch (Exception e)
+        {
+            status = $"TTS error: {e.Message}";
+            Debug.LogError($"[PresetRelay] Custom TTS failed for {player.studentDisplayName}: {e}");
+        }
     }
 
     private RemoteStudentVoicePlayer ResolvePlayer(int studentIndex)
@@ -414,9 +482,9 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
         if (player == null) return int.MaxValue;
 
         string combined = $"{player.studentDisplayName} {player.studentId} {player.gameObject.name}";
-        if (combined.Contains("可可") || combined.Contains("Ele_student1")) return 0;
-        if (combined.Contains("李奥") || combined.Contains("Ele_student2")) return 1;
-        if (combined.Contains("安娜") || combined.Contains("Ele_student3")) return 2;
+        if (combined.Contains("莉莉") || combined.Contains("Lily") || combined.Contains("Ele_student1")) return 0;
+        if (combined.Contains("卢卡") || combined.Contains("Luca") || combined.Contains("Ele_student2")) return 1;
+        if (combined.Contains("贝拉") || combined.Contains("Bella") || combined.Contains("Ele_student3")) return 2;
         return 100;
     }
 
@@ -424,6 +492,21 @@ public class DesktopPresetLineRelayClient : MonoBehaviour
     {
         int index = Mathf.Clamp(studentIndex - 1, 0, voiceProfileByStudentIndex.Length - 1);
         return voiceProfileByStudentIndex[index];
+    }
+
+    private string GetAzureVoiceName(int studentIndex)
+    {
+        int index = Mathf.Clamp(studentIndex - 1, 0, azureVoiceByStudentIndex.Length - 1);
+        return azureVoiceByStudentIndex[index];
+    }
+
+    private static string NormalizeBehavior(string behavior)
+    {
+        if (string.IsNullOrWhiteSpace(behavior)) return "";
+        return behavior.Trim().ToLowerInvariant()
+            .Replace("_", "")
+            .Replace("-", "")
+            .Replace(" ", "");
     }
 
     private static string GetCommandLineArg(string name)

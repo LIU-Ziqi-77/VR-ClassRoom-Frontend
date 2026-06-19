@@ -31,7 +31,7 @@ public class BehaviorDemoSetup : MonoBehaviour
     public AnimationClip leaveSeatLayingClip;
     public AnimationClip leaveSeatGettingUpClip;
     [Tooltip("Fallback runtime names if a student is not one of the Ele_student prefabs.")]
-    public string[] studentDisplayNames = { "可可", "李奥", "安娜" };
+    public string[] studentDisplayNames = { "莉莉", "卢卡", "贝拉" };
 
     [Header("Avatar Appearance")]
     [Tooltip("Replace flower-head avatars with clones of good-looking ones at runtime")]
@@ -361,9 +361,9 @@ public class BehaviorDemoSetup : MonoBehaviour
     {
         if (!string.IsNullOrEmpty(originalName))
         {
-            if (originalName.Contains("Ele_student1")) return "可可";
-            if (originalName.Contains("Ele_student2")) return "李奥";
-            if (originalName.Contains("Ele_student3")) return "安娜";
+            if (originalName.Contains("Ele_student1")) return "莉莉";
+            if (originalName.Contains("Ele_student2")) return "卢卡";
+            if (originalName.Contains("Ele_student3")) return "贝拉";
         }
 
         if (studentDisplayNames != null &&

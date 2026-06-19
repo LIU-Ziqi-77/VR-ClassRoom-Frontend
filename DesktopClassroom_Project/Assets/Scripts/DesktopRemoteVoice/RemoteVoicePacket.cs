@@ -25,6 +25,7 @@ public static class RemoteVoicePacketTypes
     public const string VoiceChunk = "voice_chunk";
     public const string VoiceStop = "voice_stop";
     public const string PresetLine = "preset_line";
+    public const string CustomText = "custom_text";
     public const string Behavior = "behavior";
     public const string SelectStudent = "select_student";
     public const string Refresh = "refresh";

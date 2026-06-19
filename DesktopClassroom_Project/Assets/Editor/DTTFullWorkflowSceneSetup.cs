@@ -113,22 +113,22 @@ public static class DTTFullWorkflowSceneSetup
         {
             CreateBinding(
                 "Ele_student1",
-                "可可",
+                "莉莉",
                 DTTScenarioType.DirectCorrect,
                 "student_01_xiaoxiao_girl",
-                new [] { "可可", "学生一", "第一个学生", "一号学生", "一号", "student one", "student 1" }),
+                new [] { "莉莉", "Lily", "lili", "学生一", "第一个学生", "一号学生", "一号", "student one", "student 1" }),
             CreateBinding(
                 "Ele_student2",
-                "李奥",
+                "卢卡",
                 DTTScenarioType.HalfPromptThenCorrect,
                 "student_03_yunjian_boy",
-                new [] { "李奥", "里奥", "学生二", "第二个学生", "二号学生", "二号", "student two", "student 2" }),
+                new [] { "卢卡", "Luca", "luka", "学生二", "第二个学生", "二号学生", "二号", "student two", "student 2" }),
             CreateBinding(
                 "Ele_student3",
-                "安娜",
+                "贝拉",
                 DTTScenarioType.FullPromptAfterHalfPromptError,
                 "student_02_xiaoyi_girl",
-                new [] { "安娜", "学生三", "第三个学生", "三号学生", "三号", "student three", "student 3" })
+                new [] { "贝拉", "Bella", "学生三", "第三个学生", "三号学生", "三号", "student three", "student 3" })
         };
     }
 

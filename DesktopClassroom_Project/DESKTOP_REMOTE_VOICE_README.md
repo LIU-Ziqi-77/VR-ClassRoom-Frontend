@@ -111,7 +111,7 @@ browser page, so opening it directly in Chrome will not show the control UI.
 
 6. In the browser console:
    - click `连接`
-   - select 可可 / 李奥 / 安娜
+   - select 莉莉, 卢卡, or 贝拉
    - click a preset line such as `老师老师，我知道！`
    - Unity should play the matching local WAV from the selected student's voice profile.
 

@@ -80,7 +80,7 @@ public class BehaviorDemoController : MonoBehaviour
     [Tooltip("How far from the seat the student walks when leaving (world units).")]
     public float leaveSeatDistance = 2.5f;
     [Tooltip("Student whose leave-seat path is forced to local right instead of random side selection.")]
-    public string fixedRightLeaveStudentName = "可可";
+    public string fixedRightLeaveStudentName = "莉莉";
     [Tooltip("Leave-seat distance for the fixed-right student, in world units.")]
     public float fixedRightLeaveDistance = 1f;
     [Tooltip("Vertical root offset applied while holding the leave-seat laying clip. Negative values lower the avatar toward the floor.")]

@@ -15,6 +15,7 @@ UserSettings/
 *.pidb
 *.booproj
 *.svd
+mono_crash.*.json
 
 .DS_Store
 *.save

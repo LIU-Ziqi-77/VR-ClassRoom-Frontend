@@ -1,36 +1,68 @@
 {
   "object_answers": [
     {
-      "key": "ruler_short",
-      "text": "尺子！"
+      "key": "crab_short",
+      "text": "螃蟹！"
     },
     {
-      "key": "ruler_sentence",
-      "text": "这是尺子。"
+      "key": "crab_sentence",
+      "text": "这是螃蟹。"
     },
     {
-      "key": "eraser_short",
-      "text": "橡皮！"
+      "key": "jellyfish_short",
+      "text": "水母！"
     },
     {
-      "key": "eraser_sentence",
-      "text": "这是橡皮。"
+      "key": "jellyfish_sentence",
+      "text": "这是水母。"
     },
     {
-      "key": "pencil_short",
-      "text": "铅笔！"
+      "key": "bee_short",
+      "text": "蜜蜂！"
     },
     {
-      "key": "pencil_sentence",
-      "text": "这是铅笔。"
+      "key": "bee_sentence",
+      "text": "这是蜜蜂。"
     },
     {
-      "key": "notebook_short",
-      "text": "本子！"
+      "key": "ant_short",
+      "text": "蚂蚁！"
     },
     {
-      "key": "notebook_sentence",
-      "text": "这是本子。"
+      "key": "ant_sentence",
+      "text": "这是蚂蚁。"
+    },
+    {
+      "key": "apple_short",
+      "text": "苹果！"
+    },
+    {
+      "key": "apple_sentence",
+      "text": "这是苹果。"
+    },
+    {
+      "key": "banana_short",
+      "text": "香蕉！"
+    },
+    {
+      "key": "banana_sentence",
+      "text": "这是香蕉。"
+    },
+    {
+      "key": "strawberry_short",
+      "text": "草莓！"
+    },
+    {
+      "key": "strawberry_sentence",
+      "text": "这是草莓。"
+    },
+    {
+      "key": "grape_short",
+      "text": "葡萄！"
+    },
+    {
+      "key": "grape_sentence",
+      "text": "这是葡萄。"
     }
   ],
   "uncertain_answers": [
