@@ -101,7 +101,7 @@ public class DTTWorkflowController : MonoBehaviour
     [FormerlySerializedAs("kekeLeaveSeatInitialDelaySeconds")]
     public float lilyLeaveSeatInitialDelaySeconds = 20f;
     [FormerlySerializedAs("kekeLeaveSeatIntervalSeconds")]
-    public float lilyLeaveSeatIntervalSeconds = 45f;
+    public float lilyLeaveSeatIntervalSeconds = 80f;
     [FormerlySerializedAs("kekeReturnDelaySeconds")]
     public float lilyReturnDelaySeconds = 1f;
     [FormerlySerializedAs("kekeReturnPhrases")]

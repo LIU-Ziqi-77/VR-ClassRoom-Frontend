@@ -95,7 +95,7 @@ public class DTTWorkflowController : MonoBehaviour
     public string kekeLeaveSeatStudentName = "可可";
     public string kekeLeaveSeatAllowedActiveStudentName = "安娜";
     public float kekeLeaveSeatInitialDelaySeconds = 20f;
-    public float kekeLeaveSeatIntervalSeconds = 45f;
+    public float kekeLeaveSeatIntervalSeconds = 80f;
     public float kekeReturnDelaySeconds = 1f;
     public string[] kekeReturnPhrases = { "起来", "回来", "回座位", "怎么躺下", "躺下啦", "躺下了" };
 

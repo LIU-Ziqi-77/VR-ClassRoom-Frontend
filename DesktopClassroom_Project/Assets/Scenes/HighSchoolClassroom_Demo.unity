@@ -1094,7 +1094,7 @@ MonoBehaviour:
   lilyLeaveSeatStudentName: "\u8389\u8389 / Lily"
   lilyLeaveSeatAllowedActiveStudentName: "\u8D1D\u62C9 / Bella"
   lilyLeaveSeatInitialDelaySeconds: 20
-  lilyLeaveSeatIntervalSeconds: 45
+  lilyLeaveSeatIntervalSeconds: 80
   lilyReturnDelaySeconds: 1
   lilyReturnPhrases:
   - "\u8D77\u6765"

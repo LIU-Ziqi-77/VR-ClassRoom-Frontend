@@ -39,6 +39,9 @@ public class StudentBehaviorVisuals : MonoBehaviour
     public Color selectedColor  = new Color(0.4f,  0.9f,  0.4f,  1f);
     public Color behaviorColor  = new Color(1f,    0.85f, 0.2f,  1f);
     public Color speakingColor  = new Color(0.4f,  0.75f, 1f,    1f);
+    public Color labelShadowColor = new Color(0f, 0f, 0f, 0.85f);
+    public Vector2 screenShadowOffset = new Vector2(1.5f, 1.5f);
+    public Vector3 worldShadowOffset = new Vector3(0.018f, -0.018f, 0.01f);
 
     // ─── Runtime ─────────────────────────────────────────────
 
@@ -54,6 +57,9 @@ public class StudentBehaviorVisuals : MonoBehaviour
     TextMesh _worldNameText;
     TextMesh _worldBehaviorText;
     TextMesh _worldArrowText;
+    TextMesh _worldNameShadowText;
+    TextMesh _worldBehaviorShadowText;
+    TextMesh _worldArrowShadowText;
 
     void Awake()
     {
@@ -107,24 +113,41 @@ public class StudentBehaviorVisuals : MonoBehaviour
         {
             _arrowStyle.normal.textColor = selectedColor;
             float arrowY = sy - 24f;
-            GUI.Label(new Rect(sx - 20f, arrowY, 40f, 24f), "▼", _arrowStyle);
+            DrawShadowedLabel(new Rect(sx - 20f, arrowY, 40f, 24f), selectedArrowText, _arrowStyle, selectedColor);
         }
 
         // ── Behavior tag (only when active) ──
         if (hasBehavior && !string.IsNullOrEmpty(behaviorName))
         {
-            _behaviorStyle.normal.textColor = BehaviorTagColor(behaviorName);
+            Color behaviorCol = BehaviorTagColor(behaviorName);
+            _behaviorStyle.normal.textColor = behaviorCol;
             Vector2 bSize = _behaviorStyle.CalcSize(new GUIContent(behaviorName));
-            GUI.Label(new Rect(sx - bSize.x * 0.5f, sy - 14f, bSize.x + 6f, 20f),
-                      behaviorName, _behaviorStyle);
+            DrawShadowedLabel(new Rect(sx - bSize.x * 0.5f, sy - 14f, bSize.x + 6f, 20f),
+                              behaviorName, _behaviorStyle, behaviorCol);
         }
 
         // ── Name label ──
         Color nameCol = isSelected ? selectedColor : (hasBehavior ? behaviorColor : idleColor);
         _nameStyle.normal.textColor = nameCol;
         Vector2 nSize = _nameStyle.CalcSize(new GUIContent(displayName));
-        GUI.Label(new Rect(sx - nSize.x * 0.5f, sy + 4f, nSize.x + 6f, 20f),
-                  displayName, _nameStyle);
+        DrawShadowedLabel(new Rect(sx - nSize.x * 0.5f, sy + 4f, nSize.x + 6f, 20f),
+                          displayName, _nameStyle, nameCol);
+    }
+
+    void DrawShadowedLabel(Rect rect, string text, GUIStyle style, Color textColor)
+    {
+        Color original = style.normal.textColor;
+        style.normal.textColor = labelShadowColor;
+        Rect shadowRect = new Rect(
+            rect.x + screenShadowOffset.x,
+            rect.y + screenShadowOffset.y,
+            rect.width,
+            rect.height);
+        GUI.Label(shadowRect, text, style);
+
+        style.normal.textColor = textColor;
+        GUI.Label(rect, text, style);
+        style.normal.textColor = original;
     }
 
     // ─── Helpers ─────────────────────────────────────────────
@@ -216,14 +239,28 @@ public class StudentBehaviorVisuals : MonoBehaviour
             _worldLabelRoot.rotation = Quaternion.LookRotation(toCamera.normalized, Vector3.up);
         }
 
-        _worldNameText.text = displayName;
-        _worldNameText.color = nameCol;
+        SetWorldText(_worldNameText, _worldNameShadowText, displayName, nameCol);
 
-        _worldBehaviorText.text = hasBehavior && !string.IsNullOrEmpty(behaviorName) ? behaviorName : "";
-        _worldBehaviorText.color = BehaviorTagColor(behaviorName);
+        string behaviorText = hasBehavior && !string.IsNullOrEmpty(behaviorName) ? behaviorName : "";
+        SetWorldText(_worldBehaviorText, _worldBehaviorShadowText, behaviorText, BehaviorTagColor(behaviorName));
 
-        _worldArrowText.text = isSelected ? selectedArrowText : "";
-        _worldArrowText.color = selectedColor;
+        string arrowText = isSelected ? selectedArrowText : "";
+        SetWorldText(_worldArrowText, _worldArrowShadowText, arrowText, selectedColor);
+    }
+
+    void SetWorldText(TextMesh mainText, TextMesh shadowText, string value, Color color)
+    {
+        if (mainText != null)
+        {
+            mainText.text = value;
+            mainText.color = color;
+        }
+
+        if (shadowText != null)
+        {
+            shadowText.text = value;
+            shadowText.color = labelShadowColor;
+        }
     }
 
     void EnsureWorldSpaceLabel()
@@ -235,8 +272,11 @@ public class StudentBehaviorVisuals : MonoBehaviour
         root.transform.localScale = Vector3.one * worldLabelScale;
         _worldLabelRoot = root.transform;
 
+        _worldNameShadowText = CreateWorldText("Name Shadow", worldShadowOffset, 42, TextAnchor.MiddleCenter);
         _worldNameText = CreateWorldText("Name", Vector3.zero, 42, TextAnchor.MiddleCenter);
+        _worldBehaviorShadowText = CreateWorldText("Behavior Shadow", Vector3.up * worldBehaviorYOffset + worldShadowOffset, 28, TextAnchor.MiddleCenter);
         _worldBehaviorText = CreateWorldText("Behavior", Vector3.up * worldBehaviorYOffset, 28, TextAnchor.MiddleCenter);
+        _worldArrowShadowText = CreateWorldText("Selected Arrow Shadow", Vector3.up * worldArrowYOffset + worldShadowOffset, 44, TextAnchor.MiddleCenter);
         _worldArrowText = CreateWorldText("Selected Arrow", Vector3.up * worldArrowYOffset, 44, TextAnchor.MiddleCenter);
     }
 

@@ -5959,7 +5959,7 @@ MonoBehaviour:
   kekeLeaveSeatStudentName: "\u53EF\u53EF"
   kekeLeaveSeatAllowedActiveStudentName: "\u5B89\u5A1C"
   kekeLeaveSeatInitialDelaySeconds: 20
-  kekeLeaveSeatIntervalSeconds: 45
+  kekeLeaveSeatIntervalSeconds: 80
   kekeReturnDelaySeconds: 1
   kekeReturnPhrases:
   - "\u8D77\u6765"
