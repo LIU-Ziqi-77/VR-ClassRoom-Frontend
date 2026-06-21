@@ -63,6 +63,7 @@ public class DTTWorkflowController : MonoBehaviour
     public float distractorCollectSeconds = 1.2f;
     public float distractorActionSeconds = 3f;
     public float additionalDistractorWaitSeconds = 3f;
+    public float bufferedTeacherEventSeconds = 8f;
     public bool allowMultipleDistractors = true;
     public bool resetScenarioOnStudentChange = true;
 
@@ -120,6 +121,11 @@ public class DTTWorkflowController : MonoBehaviour
     private string status = "Select a DTT student to begin.";
     private DTTTeacherIntent lastDistractorIntent = DTTTeacherIntent.Unknown;
     private bool collectingDistractors;
+    private bool hasBufferedTeacherEvent;
+    private DTTWorkflowEvent bufferedTeacherEvent;
+    private string bufferedTeacherEventRawText = "";
+    private float bufferedTeacherEventTime;
+    private bool replayingBufferedTeacherEvent;
     private GUIStyle statusStyle;
     private DTTMonitorReporter monitorReporter;
     private BehaviorDemoController behaviorDemoController;
@@ -261,6 +267,7 @@ public class DTTWorkflowController : MonoBehaviour
             BuildScenario(binding.scenarioType);
             currentStepIndex = 0;
             StopActiveRoutine();
+            ClearBufferedTeacherEvent();
             LogEvent($"Selected {GetStudentLabel(binding)} / {binding.scenarioType}");
             UpdateStatus();
             if (IsActiveStudentNamed(lilyLeaveSeatAllowedActiveStudentName))
@@ -354,16 +361,26 @@ public class DTTWorkflowController : MonoBehaviour
 
     private void TryAcceptEvent(DTTWorkflowEvent workflowEvent, string rawText = "")
     {
-        if (isWaiting)
-        {
-            IgnoreEvent(workflowEvent.ToString(), "workflow is waiting for timed student response");
-            return;
-        }
-
         DTTWorkflowStep step = GetCurrentStep();
         if (step == null)
         {
             IgnoreEvent(workflowEvent.ToString(), "scenario is complete");
+            return;
+        }
+
+        if (isWaiting)
+        {
+            if (TryBufferTeacherEventDuringDistractor(step, workflowEvent, rawText))
+            {
+                return;
+            }
+
+            IgnoreEvent(workflowEvent.ToString(), "workflow is waiting for timed student response");
+            return;
+        }
+
+        if (TryBufferTeacherEventDuringDistractor(step, workflowEvent, rawText))
+        {
             return;
         }
 
@@ -626,6 +643,65 @@ public class DTTWorkflowController : MonoBehaviour
         }
 
         TryAutoAdvanceCurrentStep();
+        TryReplayBufferedTeacherEvent();
+    }
+
+    private bool TryBufferTeacherEventDuringDistractor(DTTWorkflowStep step, DTTWorkflowEvent workflowEvent, string rawText)
+    {
+        if (replayingBufferedTeacherEvent) return false;
+        if (step == null || step.Response != DTTStudentScriptedResponse.DistractorAction) return false;
+        if (activeRoutine == null && !collectingDistractors && !isWaiting) return false;
+        if (step.ExpectedEvent == workflowEvent) return false;
+        if (!HasLaterStepForEvent(workflowEvent)) return false;
+
+        hasBufferedTeacherEvent = true;
+        bufferedTeacherEvent = workflowEvent;
+        bufferedTeacherEventRawText = rawText;
+        bufferedTeacherEventTime = Time.time;
+        LogEvent($"Buffered early teacher event during distractor action: {workflowEvent}" + (string.IsNullOrEmpty(rawText) ? "" : $" | \"{rawText}\""));
+        return true;
+    }
+
+    private void TryReplayBufferedTeacherEvent()
+    {
+        if (!hasBufferedTeacherEvent || replayingBufferedTeacherEvent) return;
+        if (isWaiting) return;
+
+        float maxAge = Mathf.Max(0.1f, bufferedTeacherEventSeconds);
+        if (Time.time - bufferedTeacherEventTime > maxAge)
+        {
+            IgnoreEvent(bufferedTeacherEvent.ToString(), "buffered teacher event expired before workflow was ready");
+            ClearBufferedTeacherEvent();
+            return;
+        }
+
+        DTTWorkflowStep step = GetCurrentStep();
+        if (step == null) return;
+        if (step.ExpectedEvent != bufferedTeacherEvent)
+        {
+            return;
+        }
+
+        DTTWorkflowEvent eventToReplay = bufferedTeacherEvent;
+        string rawText = bufferedTeacherEventRawText;
+        ClearBufferedTeacherEvent();
+
+        replayingBufferedTeacherEvent = true;
+        try
+        {
+            TryAcceptEvent(eventToReplay, rawText);
+        }
+        finally
+        {
+            replayingBufferedTeacherEvent = false;
+        }
+    }
+
+    private void ClearBufferedTeacherEvent()
+    {
+        hasBufferedTeacherEvent = false;
+        bufferedTeacherEventRawText = "";
+        bufferedTeacherEventTime = 0f;
     }
 
     private void TryAutoAdvanceCurrentStep()
