@@ -63,6 +63,7 @@ public class DTTWorkflowController : MonoBehaviour
     public float distractorActionSeconds = 3f;
     public float additionalDistractorWaitSeconds = 3f;
     public float bufferedTeacherEventSeconds = 8f;
+    public float duplicateTeacherEventIgnoreSeconds = 0.5f;
     public bool allowMultipleDistractors = true;
     public bool resetScenarioOnStudentChange = true;
 
@@ -118,6 +119,9 @@ public class DTTWorkflowController : MonoBehaviour
     private string bufferedTeacherEventRawText = "";
     private float bufferedTeacherEventTime;
     private bool replayingBufferedTeacherEvent;
+    private DTTWorkflowEvent lastAcceptedWorkflowEvent;
+    private string lastAcceptedWorkflowEventRawText = "";
+    private float lastAcceptedWorkflowEventTime = -100f;
     private GUIStyle statusStyle;
     private DTTMonitorReporter monitorReporter;
     private BehaviorDemoController behaviorDemoController;
@@ -167,15 +171,36 @@ public class DTTWorkflowController : MonoBehaviour
             return;
         }
 
-        if (intent == DTTTeacherIntent.SelectStudent || !string.IsNullOrEmpty(message.student_id) || !string.IsNullOrEmpty(message.student_name))
+        if (intent == DTTTeacherIntent.SelectStudent)
         {
-            if (SelectStudentByVoice(message.student_id, message.student_name, message.text))
+            if (TryHandleSameStudentSelectionDuringActiveTrial(message))
             {
                 return;
             }
+
+            SelectStudentByVoice(message.student_id, message.student_name, message.text);
+            return;
         }
 
         HandleTeacherIntent(intent, message.text);
+    }
+
+    private bool TryHandleSameStudentSelectionDuringActiveTrial(DTTVoiceIntentMessage message)
+    {
+        if (!IsScenarioInProgress()) return false;
+
+        DTTStudentScenarioBinding binding = FindStudentBinding(message.student_id, message.student_name, message.text);
+        if (binding == null || binding != activeStudent) return false;
+
+        if (TryInferTeacherIntentFromText(message.text, out DTTTeacherIntent inferredIntent))
+        {
+            LogEvent($"Same-student SelectStudent ignored during active trial; using inferred intent {inferredIntent}");
+            HandleTeacherIntent(inferredIntent, message.text);
+            return true;
+        }
+
+        IgnoreEvent("SelectStudent", $"same active student during active trial: {GetStudentLabel(binding)}");
+        return true;
     }
 
     public void HandleTeacherIntent(DTTTeacherIntent intent, string rawText = "")
@@ -359,6 +384,12 @@ public class DTTWorkflowController : MonoBehaviour
             return;
         }
 
+        if (IsRecentlyAcceptedDuplicate(workflowEvent, rawText))
+        {
+            IgnoreEvent(workflowEvent.ToString(), "duplicate teacher event from the same utterance");
+            return;
+        }
+
         if (isWaiting)
         {
             if (TryBufferTeacherEventDuringDistractor(step, workflowEvent, rawText))
@@ -399,6 +430,7 @@ public class DTTWorkflowController : MonoBehaviour
         }
 
         LogEvent($"Step {currentStepIndex + 1} OK: {step.Label}" + (string.IsNullOrEmpty(rawText) ? "" : $" | \"{rawText}\""));
+        RecordAcceptedWorkflowEvent(workflowEvent, rawText);
         StopActiveRoutine();
 
         if (step.Response != DTTStudentScriptedResponse.None)
@@ -695,6 +727,28 @@ public class DTTWorkflowController : MonoBehaviour
         bufferedTeacherEventTime = 0f;
     }
 
+    private bool IsRecentlyAcceptedDuplicate(DTTWorkflowEvent workflowEvent, string rawText)
+    {
+        if (replayingBufferedTeacherEvent) return false;
+        if (workflowEvent != lastAcceptedWorkflowEvent) return false;
+        if (!MatchesNormalizedText(rawText, lastAcceptedWorkflowEventRawText)) return false;
+
+        float window = Mathf.Max(0.05f, duplicateTeacherEventIgnoreSeconds);
+        return Time.time - lastAcceptedWorkflowEventTime <= window;
+    }
+
+    private void RecordAcceptedWorkflowEvent(DTTWorkflowEvent workflowEvent, string rawText)
+    {
+        lastAcceptedWorkflowEvent = workflowEvent;
+        lastAcceptedWorkflowEventRawText = rawText;
+        lastAcceptedWorkflowEventTime = Time.time;
+    }
+
+    private bool MatchesNormalizedText(string left, string right)
+    {
+        return string.Equals(Normalize(left), Normalize(right), StringComparison.OrdinalIgnoreCase);
+    }
+
     private void TryAutoAdvanceCurrentStep()
     {
         DTTWorkflowStep step = GetCurrentStep();
@@ -952,6 +1006,11 @@ public class DTTWorkflowController : MonoBehaviour
         return activeStudent != null && currentSteps.Count > 0 && currentStepIndex >= currentSteps.Count;
     }
 
+    private bool IsScenarioInProgress()
+    {
+        return activeStudent != null && currentSteps.Count > 0 && currentStepIndex >= 0 && currentStepIndex < currentSteps.Count;
+    }
+
     private void ScheduleNextKekeLeaveSeatCheck(float delaySeconds = -1f)
     {
         float delay = delaySeconds >= 0f
@@ -1011,6 +1070,64 @@ public class DTTWorkflowController : MonoBehaviour
         }
 
         return targetItemType;
+    }
+
+    private bool TryInferTeacherIntentFromText(string rawText, out DTTTeacherIntent intent)
+    {
+        intent = DTTTeacherIntent.Unknown;
+        string normalized = Normalize(rawText);
+        if (string.IsNullOrEmpty(normalized)) return false;
+
+        if (normalized.Contains("拍") && normalized.Contains("手"))
+        {
+            intent = DTTTeacherIntent.ClapHands;
+            return true;
+        }
+
+        if ((normalized.Contains("摸") || normalized.Contains("指") || normalized.Contains("碰")) && normalized.Contains("鼻"))
+        {
+            intent = DTTTeacherIntent.TouchNose;
+            return true;
+        }
+
+        if (normalized.Contains("什么"))
+        {
+            intent = DTTTeacherIntent.WhatIsThis;
+            return true;
+        }
+
+        if (normalized.Contains("不对") || normalized.Contains("再来") || normalized.Contains("再试") || normalized.Contains("重新"))
+        {
+            intent = DTTTeacherIntent.RetryOrCorrection;
+            return true;
+        }
+
+        if (normalized.Contains("全辅助") || normalized.Contains("全部辅助") || normalized.Contains("答案是") || normalized.Contains("我告诉你"))
+        {
+            intent = DTTTeacherIntent.FullPrompt;
+            return true;
+        }
+
+        if (normalized.Contains("半辅助") || normalized.Contains("提示") ||
+            normalized.Contains("开") || normalized.Contains("尺") || normalized.Contains("齿") ||
+            normalized.Contains("吃") || normalized.Contains("橡") || normalized.Contains("向") ||
+            normalized.Contains("像") || normalized.Contains("象") || normalized.Contains("铅") ||
+            normalized.Contains("千") || normalized.Contains("签") || normalized.Contains("笔") ||
+            normalized.Contains("本"))
+        {
+            intent = DTTTeacherIntent.HalfPrompt;
+            return true;
+        }
+
+        if (normalized.Contains("很好") || normalized.Contains("很棒") || normalized.Contains("真棒") ||
+            normalized.Contains("对了") || normalized.Contains("答对") || normalized.Contains("做得好") ||
+            normalized.Contains("太棒") || normalized.Contains("非常好"))
+        {
+            intent = DTTTeacherIntent.PositiveReinforcement;
+            return true;
+        }
+
+        return false;
     }
 
     private bool TryMapIntentToWorkflowEvent(DTTTeacherIntent intent, out DTTWorkflowEvent workflowEvent)
