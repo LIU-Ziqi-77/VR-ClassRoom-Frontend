@@ -922,7 +922,7 @@ public class DTTWorkflowController : MonoBehaviour
         {
             kekeReturnRoutine = StartCoroutine(DelayedKekeReturnRoutine(demo));
         }
-        ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatInitialDelaySeconds);
+        ScheduleNextKekeLeaveSeatCheck(kekeLeaveSeatIntervalSeconds);
         LogEvent($"{kekeLeaveSeatStudentName} return-to-seat {source} intervention intercepted; active DTT student remains {GetStudentLabel(activeStudent)}");
         UpdateStatus();
         return true;

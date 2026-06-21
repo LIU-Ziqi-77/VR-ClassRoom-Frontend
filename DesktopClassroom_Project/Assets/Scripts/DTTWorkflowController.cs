@@ -931,7 +931,7 @@ public class DTTWorkflowController : MonoBehaviour
         {
             lilyReturnRoutine = StartCoroutine(DelayedLilyReturnRoutine(demo));
         }
-        ScheduleNextLilyLeaveSeatCheck(lilyLeaveSeatInitialDelaySeconds);
+        ScheduleNextLilyLeaveSeatCheck(lilyLeaveSeatIntervalSeconds);
         LogEvent($"{lilyLeaveSeatStudentName} return-to-seat {source} intervention intercepted; active DTT student remains {GetStudentLabel(activeStudent)}");
         UpdateStatus();
         return true;
