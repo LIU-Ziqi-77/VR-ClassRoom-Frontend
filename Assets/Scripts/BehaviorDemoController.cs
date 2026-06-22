@@ -331,7 +331,7 @@ public class BehaviorDemoController : MonoBehaviour
     public bool ReturnLeaveSeatStudent(string displayName)
     {
         ProceduralBehaviorAnimator pba = FindStudentByDisplayName(displayName);
-        if (pba == null || !IsLeaveSeatBehaviorActive(displayName)) return false;
+        if (pba == null || !pba.IsBehaviorActive || pba.CurrentBehaviorName != "离座") return false;
 
         pba.PlayReturnToSeat(returnSeatMoveDuration, leaveSeatGettingUpClip);
         Log($"Scripted return to seat: {displayName}");
